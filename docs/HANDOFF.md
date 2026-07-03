@@ -29,6 +29,16 @@ hold · ship name). Details in §6's dated entries. **A fifth QA pass (play-feel
 of the reworked menus + new-player flow, 2026-07-02) followed — 5 findings, all
 fixed & verified same-session** (see the PLAY-FEEL PASS entry in §6).
 
+**NEXT SESSION (planned): custom land-asset sprites.** The user is generating
+sprites in FLORA/Nano Banana from `docs/SPRITE_LIST.md` (master list + prompts +
+palette anchors + integration plan in its §G). Expect image folders
+(`spr-tree-green/` etc., magenta backgrounds needing PIL keying). Wire via the
+`drawSprite` flat pipeline, one draw fn at a time (trees → houses → fort →
+props); decide buffer-vs-crisp rendering by eye with the first tree; variants
+picked by world hash; verify per biome/culture; bump GAME_VERSION + git commit
+per batch. The game is **v0.16.0**, a git repo (log = changelog), with 4 save
+slots.
+
 **What's next (pick with the user):**
 1. ~~**Play-feel pass**~~ — DONE 2026-07-02 (menus/new-player flow; 5 fixes, §6).
 2. **Post-plan backlog** (biggest first): automated fleet trade routes (passive
