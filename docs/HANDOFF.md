@@ -912,6 +912,29 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > 6 icon tiles (AMMO minus round; `drawAmmoIcon` + owned count) with a `cost×5`
 > buy button each (`buyAmmo`). (Budgeting lesson: fnt(13) glyphs are ~23px —
 > a 13px 'text height' allowance overlapped rows.)
+> **DIFFICULTY PASS (v0.16.0 — user: 'starting health too high, enemy damage
+> way too low, bosses need AOE you must dodge'; verified, console clean):**
+> Sloop hp **100→70** (other classes untouched); `enemyFireA` base dmg
+> **11→15 / heavies 15→20**. **Leviathan:** tentacles per volley `1+phase` →
+> `2+phase` (spread 95→110), tentacle dmg 15→22, spew 10→14, and a NEW
+> **shockwave** (phase≥2, every `8−phase`s): 1.25s red telegraph ring at 270u
+> around the body (drawn in drawBoss as a squashed ellipse), then a burst —
+> inside 270u = 24 dmg + 240u/s radial knockback; outside = a splash. Sail OUT
+> of the ring. State on the boss: `e.waveT`/`e.wave{t,hit}` (wave logic sits
+> AFTER the leash early-return, so it only runs in cursed).
+> **All 5 terrors:** an **eruption barrage** in the miniboss block (leash
+> section of stepEnemies): every 5–7.5s within 750u, two telegraphed bursts —
+> one at the ship's position, one leading its velocity (+0.95s) — 1.1/1.35s
+> red rings (drawn unscaled in drawEnemy, they land at the HELM not the boss),
+> then strike r80 for 18. Its kind's roar at 0.45 is the audio warning.
+> **Whirlpool loop** louder + wider: 0.95 inside the funnel, ramp from 300u off
+> the rim (was 0.55 max/220u — inaudible under the mix, the user's report).
+> Verified: shockwave 24dmg+knockback in range / 0 at 600u; eruption 18 dmg
+> stationary / 0 when dodged; shot dmg 15/20; fresh sloop 70hp.
+> **Test gotcha:** never scan ±30 chunks of uncached world in an eval
+> (~3.7k genChunk calls wedges the tab for minutes and the CDP session with
+> it) — find POIs via mapPois() or keep scans ≤ ±8 chunks.
+>
 > **VERSION CONTROL + SAVE SLOTS (v0.15.0):** the project is now a **git repo**
 > (baseline commit = the playtest build; commit each verified batch with a
 > summary — `git log` is the changelog now). **`GAME_VERSION = '0.15.0'`**
