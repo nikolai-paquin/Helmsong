@@ -2041,11 +2041,14 @@ function drawIsland(isl) {
   }
   // biome flora (each tree carries its tier elevation in tr.z)
   const bi = isl.biome;
+  const TREE_SPR = { green:'tree_green', tropic:'tree_tropic', dead:'tree_dead', ice:'tree_snow', desert:'cactus' };
   for (const tr of isl.trees) {
     if (bi==='desert' && (tr.s < 0.9)) continue;   // sparse desert
     const zB = tr.z !== undefined ? tr.z : isl.H;
     const base = proj(tr.x, tr.y, zB);
     const th = (10 + tr.s*8) * (bi==='tropic'?1.4:1);
+    const sk = TREE_SPR[bi];   // sprite flora (buffer-drawn — decided by eye over the crisp overlay); code art below is the fallback
+    if (sk && drawSpriteBuf(sprVar(sk, hash2(tr.x|0, tr.y|0, 53)), tr.x, tr.y, zB, th*1.9)) continue;
     if (bi==='ice'){
       // snowy pine: dark-green triangle with a pale cap
       const topP = proj(tr.x, tr.y, zB+th), midP = proj(tr.x, tr.y, zB+th*0.5), fr=4+tr.s*3;
@@ -2082,6 +2085,14 @@ const SPRITES = {
   // ship_fisher, ship_pirate, ship_raider, ship_warship, ship_ghost, ship_patrol,
   // monsters / wildlife / islands go here too as you make them.
 };
+// Land/prop sprite set (FLORA batch — docs/SPRITE_LIST.md): kebab-named files in
+// assets/sprites/, underscore keys here, numbered variants picked by world hash.
+const LAND_SPRITES = { tree_green:4, tree_tropic:4, tree_dead:4, tree_snow:3, cactus:4,
+  house_euro:4, house_norse:4, runestone:2, house_east:3, house_desert:3, obelisk:1,
+  fort:1, fort_razed:1, rock_stack:4, peak_crag:4, iceberg:3, flotsam:3, crate:3, barrel:3 };
+for (const k in LAND_SPRITES) for (let i=1;i<=LAND_SPRITES[k];i++)
+  SPRITES[k+'_'+i] = 'assets/sprites/'+k.replace(/_/g,'-')+'-'+i+'.png';
+const sprVar = (base, h) => base + '_' + (1 + Math.min(LAND_SPRITES[base]-1, (h*LAND_SPRITES[base])|0));
 const SPR = {};
 (function loadSprites(){ for (const k in SPRITES){ const img = new Image(); img.onload = () => { SPR[k] = img; }; img.src = SPRITES[k]; } })();
 // Ornate HUD art from the PixelHUDUI pack (gold-framed slot, bars, heart, icons).
@@ -2101,6 +2112,39 @@ function drawSprite(key, wx, wy, wz, heading, worldLen, pivotY){
   spriteQueue.push({ img, sx:p[0]*PIXEL, sy:p[1]*PIXEL, rot:heading + Math.PI/2,
                      w:img.width*scale*PIXEL, h:img.height*scale*PIXEL, py:(pivotY==null?0.5:pivotY),
                      a:bctx.globalAlpha });          // capture sinking fade
+  return true;
+}
+// Land-prop sprites draw INTO the pixel buffer at their y-sort point, so they
+// chunkify with the terrain AND depth-sort against ships for free (the crisp
+// overlay queue always floats above the whole world — wrong for anything a ship
+// can pass in front of). Day/night is baked via a small cache of pre-tinted
+// canvases (tintC can't reach inside an image; brightness quantized to 1/16ths,
+// storm grey to 1/4s, so the cache stays tiny).
+const SPR_TINT = {};
+function sprTint(key, img){
+  const q = Math.max(0.5, Math.round(envMul*16)/16), qg = Math.round(envGray*4)/4;
+  if (q >= 1 && !qg) return img;
+  const ck = key+'@'+q+'/'+qg; let c = SPR_TINT[ck];
+  if (!c){
+    c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    if (qg) g.filter = 'saturate('+(1-qg*0.8).toFixed(2)+')';
+    g.drawImage(img, 0, 0); g.filter = 'none';
+    const v = Math.round(q*255);
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(0,0,c.width,c.height);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(img, 0, 0);
+    SPR_TINT[ck] = c;
+  }
+  return c;
+}
+function drawSpriteBuf(key, wx, wy, wz, worldH, pivY){
+  const img = SPR[key]; if (!img || !img.width) return false;
+  const p = proj(wx, wy, wz||0);
+  const h = worldH * VIEW * ISO_Z, w = h * img.width / img.height;
+  if (p[0] < -w || p[0] > BW + w || p[1] < -h || p[1] > BH + h) return true;   // off-buffer: culled but "drawn"
+  bctx.imageSmoothingEnabled = true;   // smooth the downscale; the PIXEL upscale re-chunks it
+  bctx.drawImage(sprTint(key, img), p[0]-w*0.5, p[1]-h*(pivY==null?1:pivY), w, h);
+  bctx.imageSmoothingEnabled = false;
   return true;
 }
 // Directional sprites: 8 pre-rendered ISO frames per object (bow facing E,SE,S,SW,W,
@@ -6078,7 +6122,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.16.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.17.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
