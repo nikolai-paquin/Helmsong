@@ -35,6 +35,15 @@
   #intro .pick-label { opacity:.55; letter-spacing:.25em; font-size:11px; text-transform:uppercase; margin-top:8px; }
   #intro .ships { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; max-width:660px; }
   #intro .ships .card { background:rgba(15,30,42,0.5); border:2px solid transparent; border-radius:6px; padding:9px 13px; cursor:pointer; min-width:132px; transition:.12s; text-align:left; }
+  #slots { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  #slots .card { background:rgba(15,30,42,0.55); border:2px solid rgba(255,217,138,0.25); border-radius:6px; padding:10px 14px; cursor:pointer; min-width:158px; text-align:left; color:inherit; font:inherit; position:relative; transition:.12s; }
+  #slots .card:hover { border-color:#ffd98a; background:rgba(15,30,42,0.9); }
+  #slots .card b { color:#ffd98a; }
+  #slots .card .sub { font-size:11px; opacity:.75; display:block; margin-top:4px; }
+  #slots .card .ver { font-size:10px; opacity:.5; display:block; margin-top:3px; }
+  #slots .card .del { position:absolute; top:3px; right:8px; opacity:.35; font-size:12px; }
+  #slots .card .del:hover { opacity:1; color:#e05a42; }
+  #slots .card.empty { text-align:center; opacity:.85; }
   #intro .ships .card:hover { background:rgba(15,30,42,0.75); }
   #intro .ships .card.sel { border-color:#ffd98a; background:rgba(255,217,138,0.12); }
   #intro .ships .card b { color:#ffd98a; letter-spacing:.08em; font-size:14px; }
@@ -60,11 +69,9 @@
     <span><b>P / O</b></span><span>mute · settings (sound, graphics, keys)</span>
   </div>
   <div class="pick-label">you inherit a weathered sloop · earn grander ships at the shipyard</div>
-  <div class="btnrow">
-    <button id="startBtn">Set Sail</button>
-    <button id="newBtn" class="ghost" style="display:none">New Game</button>
-  </div>
+  <div id="slots"></div>
   <div class="hint">scroll to zoom · sail with the wind for speed · your voyage saves automatically</div>
+  <div class="hint" id="verline" style="opacity:.35"></div>
 </div>
 <script>
 "use strict";
@@ -3176,7 +3183,7 @@ function drawPause(){
   if (ui.pauseConfirm){
     ctx.fillStyle = '#ffd98a'; ctx.font = fnt(20); ctx.fillText('Start a new game?', W/2, H/2-88);
     ctx.fillStyle = 'rgba(233,222,198,0.65)'; ctx.font = fntS(10); ctx.fillText('This erases your current voyage.', W/2, H/2-48);
-    menuBtn('Erase & start new', W/2, H/2+4, () => { try { localStorage.removeItem('helmsong_v1'); } catch(e){} location.reload(); }, true);
+    menuBtn('Erase & start new', W/2, H/2+4, () => { try { localStorage.removeItem(slotKey(activeSlot)); } catch(e){} location.reload(); }, true);
     menuBtn('Cancel', W/2, H/2+58, () => { ui.pauseConfirm = false; });
   } else {
     ctx.fillStyle = '#ffd98a'; ctx.font = fnt(26); ctx.fillText('PAUSED', W/2, H/2-128);
@@ -6016,9 +6023,24 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const SAVE_KEY = 'helmsong_v1';
+const GAME_VERSION = '0.15.0';                 // bump on notable batches — stamped into every save
+const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
+const slotKey = s => 'helmsong_save_' + s;
+let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
+function setActiveSlot(s){ activeSlot = clamp(s, 1, SAVE_SLOTS); try { localStorage.setItem('helmsong_slot', String(activeSlot)); } catch(e){} }
+(function migrateLegacySave(){                 // pre-slot builds kept one save under 'helmsong_v1'
+  try {
+    const old = localStorage.getItem('helmsong_v1');
+    if (old && !localStorage.getItem(slotKey(1))){
+      const o = JSON.parse(old); o.version = o.version || 'pre-0.15';
+      localStorage.setItem(slotKey(1), JSON.stringify(o));
+    }
+    if (old) localStorage.removeItem('helmsong_v1');
+  } catch(e){}
+})();
 function saveGame() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify({
+  try { localStorage.setItem(slotKey(activeSlot), JSON.stringify({
+    version: GAME_VERSION, savedAt: Date.now(),
     x:ship.x, y:ship.y, heading:ship.heading, sail:ship.sail, hp:ship.hp, t:timeOfDay.t, elapsed:world.elapsed,
     coin:player.coin, cargo:player.cargo, lastPort:player.lastPort||null,
     up:player.up, lantern:player.lantern, contracts:player.contracts, stats:player.stats, visited:player.visited.slice(-200),
@@ -6034,7 +6056,7 @@ function saveGame() {
 }
 function loadGame() {
   try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (!s) return false;
+    const s = JSON.parse(localStorage.getItem(slotKey(activeSlot))); if (!s) return false;
     ship.x=s.x; ship.y=s.y; ship.heading=s.heading; ship.sail=s.sail??0.55;
     timeOfDay.t=s.t??0.34; world.elapsed=s.elapsed??0;
     player.coin=s.coin??60; player.cargo=s.cargo||{}; player.lastPort=s.lastPort||null;
@@ -6084,14 +6106,50 @@ function start(fresh) {
   initAudio(); initMusic();
   world.running = true; world.last = 0; requestAnimationFrame(frame);
 }
-{ // home-screen buttons: Continue an existing voyage, or start a fresh one
-  const hasSave = (() => { try { return !!localStorage.getItem('helmsong_v1'); } catch(e){ return false; } })();
-  const startBtn = document.getElementById('startBtn'), newBtn = document.getElementById('newBtn');
-  if (hasSave){ startBtn.textContent = 'Continue Voyage'; newBtn.style.display = ''; }
-  startBtn.addEventListener('click', () => start(false));
-  newBtn.addEventListener('click', () => { try { localStorage.removeItem('helmsong_v1'); } catch(e){} start(true); });
+{ // save-slot picker — every voyage lives in its own slot, stamped with the build it was saved on
+  document.getElementById('verline').textContent = 'Helmsong v' + GAME_VERSION;
+  const wrap = document.getElementById('slots');
+  const fmtDate = t => { const d = new Date(t); return (d.getMonth()+1) + '/' + d.getDate(); };
+  const buildSlots = () => {
+    wrap.innerHTML = '';
+    for (let s = 1; s <= SAVE_SLOTS; s++){
+      let meta = null;
+      try { meta = JSON.parse(localStorage.getItem(slotKey(s))); } catch(e){}
+      const card = document.createElement('button'); card.className = 'card' + (meta ? '' : ' empty');
+      if (meta){
+        const day = Math.floor((meta.elapsed||0)/840) + 1;
+        const reg = meta.x !== undefined ? REGIONS[regionAt(meta.x, meta.y)].name : '';
+        const ver = meta.version || 'pre-0.15';
+        card.innerHTML = '<b>the ' + (meta.boatName||'Nameless') + '</b>'
+          + '<span class="sub">day ' + day + ' · ' + (meta.coin||0) + 'c · ' + reg + '</span>'
+          + '<span class="ver">' + (ver === GAME_VERSION ? 'v'+ver : 'v'+ver+' · older build')
+          + (meta.savedAt ? ' · saved ' + fmtDate(meta.savedAt) : '') + '</span>'
+          + '<span class="del" title="erase this voyage">✕</span>';
+        card.querySelector('.del').addEventListener('click', ev => {
+          ev.stopPropagation();
+          if (confirm('Erase the ' + (meta.boatName||'nameless voyage') + '? This cannot be undone.')){
+            try { localStorage.removeItem(slotKey(s)); } catch(e){}
+            buildSlots();
+          }
+        });
+        card.addEventListener('click', () => { setActiveSlot(s); start(false); });
+      } else {
+        card.innerHTML = '<b>Slot ' + s + '</b><span class="sub">begin a new voyage</span>';
+        card.addEventListener('click', () => { setActiveSlot(s); start(true); });
+      }
+      wrap.appendChild(card);
+    }
+  };
+  buildSlots();
 }
-window.addEventListener('keydown', e => { if (!world.running && (e.key==='Enter'||e.key===' ')) start(false); });
+window.addEventListener('keydown', e => {                      // Enter resumes the most recent voyage
+  if (world.running || !(e.key==='Enter' || e.key===' ')) return;
+  let best = 0, bt = -1;
+  for (let s = 1; s <= SAVE_SLOTS; s++){
+    try { const m = JSON.parse(localStorage.getItem(slotKey(s))); if (m && (m.savedAt||0) > bt){ bt = m.savedAt||0; best = s; } } catch(e2){}
+  }
+  if (best){ setActiveSlot(best); start(false); } else { setActiveSlot(1); start(true); }
+});
 
 /* ------------------------------- debug ----------------------------------- */
 window.__HS = {
@@ -6170,7 +6228,8 @@ window.__HS = {
   CREW, COSMETIC, QUEST, UPGRADES, REGIONS, SHIPS, LORE, JOURNEYS, ACHIEVEMENTS,
   tick(dt=STEP, n=1){ for(let i=0;i<n;i++) update(dt); render(); },
   startIfNeeded(){ if(!world.running) start(); },
-  save: saveGame, load: loadGame, reset(){ localStorage.removeItem(SAVE_KEY); location.reload(); },
+  save: saveGame, load: loadGame, reset(){ localStorage.removeItem(slotKey(activeSlot)); location.reload(); },
+  slot(s){ if (s) setActiveSlot(s); return activeSlot; }, GAME_VERSION,
   get waypoint(){ return waypoint; }, setWaypoint(x,y){ waypoint = (x==null?null:{x,y}); return waypoint; },
 };
 </script>

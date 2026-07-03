@@ -912,6 +912,23 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > 6 icon tiles (AMMO minus round; `drawAmmoIcon` + owned count) with a `cost×5`
 > buy button each (`buyAmmo`). (Budgeting lesson: fnt(13) glyphs are ~23px —
 > a 13px 'text height' allowance overlapped rows.)
+> **VERSION CONTROL + SAVE SLOTS (v0.15.0):** the project is now a **git repo**
+> (baseline commit = the playtest build; commit each verified batch with a
+> summary — `git log` is the changelog now). **`GAME_VERSION = '0.15.0'`**
+> (top of the save section — bump on notable batches; shown on the intro footer
+> and stamped into every save with `savedAt: Date.now()`). **4 save slots**
+> (`helmsong_save_1..4`, active pointer `helmsong_slot`, `activeSlot` +
+> `setActiveSlot`): saveGame/loadGame/__HS.reset/pause-erase all key off the
+> ACTIVE slot; binds + opts stay global (shared across captains). The intro's
+> Continue/New buttons are replaced by a **slot picker** (`buildSlots()` — DOM
+> cards: boat · day · coin · region · version ('older build' tag on mismatch) ·
+> saved date · ✕ erase with confirm; empty = 'begin a new voyage'); Enter/Space
+> resumes the MOST RECENT save by savedAt. Legacy `helmsong_v1` saves migrate
+> into slot 1 once (tagged 'pre-0.15') and the old key is removed.
+> `__HS.slot(n?)` reads/sets the active slot. NOTE: saves from before the
+> continents batch predate the current world layout — fine to load but the
+> charted world won't match; recommend fresh voyages.
+>
 > **MARKET SCROLLING (user: 'rows feel really tight — scroll past 15'):** the
 > goods list now uses a FIXED 26px pitch and windows instead of squeezing —
 > `ui.marketScroll` offset, `visRows` computed from panel height (~13 at 720p),
