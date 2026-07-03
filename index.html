@@ -2088,7 +2088,7 @@ const SPRITES = {
 // Land/prop sprite set (FLORA batch — docs/SPRITE_LIST.md): kebab-named files in
 // assets/sprites/, underscore keys here, numbered variants picked by world hash.
 const LAND_SPRITES = { tree_green:4, tree_tropic:4, tree_dead:4, tree_snow:3, cactus:4,
-  house_euro:4, house_norse:4, runestone:2, house_east:3, house_desert:3, obelisk:1,
+  house_euro:4, house_norse:4, runestone:2, house_east:2, house_desert:3, obelisk:1,   // east take 2 (open-frame) cut — too wispy at game scale
   fort:1, fort_razed:1, rock_stack:4, peak_crag:4, iceberg:3, flotsam:3, crate:3, barrel:3 };
 for (const k in LAND_SPRITES) for (let i=1;i<=LAND_SPRITES[k];i++)
   SPRITES[k+'_'+i] = 'assets/sprites/'+k.replace(/_/g,'-')+'-'+i+'.png';
@@ -3769,6 +3769,16 @@ function drawPortHouse(isl){
   const p = isl.port, cult = portCulture(isl), a = p.ang;
   const bx = p.pierX - Math.cos(a)*30, by = p.pierY - Math.sin(a)*30, zb = 5;
   const P = (dx,dy,dz) => proj(bx+dx, by+dy, zb+dz);
+  // sprite architecture (FLORA batch) — house variant picked by port hash; norse
+  // keeps its rune stone / desert its obelisk as a side-prop along the shore.
+  // The code-drawn buildings below remain the fallback until images load.
+  const HOUSE_SPR = { norse:'house_norse', east:'house_east', desert:'house_desert', euro:'house_euro' };
+  if (drawSpriteBuf(sprVar(HOUSE_SPR[cult] || 'house_euro', hash2(isl.x|0, isl.y|0, 71)), bx, by, zb, 26)){
+    const sa = a + Math.PI/2, sx = bx + Math.cos(sa)*24, sy = by + Math.sin(sa)*24;
+    if (cult === 'norse') drawSpriteBuf(sprVar('runestone', hash2(isl.y|0, isl.x|0, 73)), sx, sy, zb, 13);
+    else if (cult === 'desert') drawSpriteBuf('obelisk_1', sx, sy, zb, 24);
+    return;
+  }
   if (cult === 'norse'){
     // long stave hall — dark planks, steep roof, crossed gable beams; a rune stone stands by
     polyFill([P(-15,7,0),P(15,7,0),P(15,7,9),P(-15,7,9)], col([74,58,40]), col(PAL.OUTLINE));
@@ -6122,7 +6132,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.17.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.17.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
