@@ -1031,6 +1031,15 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > window NaN'd the spawn ring in headless tests — also the cause of the
 > mysterious `islandRadiusAt` crash when spawning from a fresh 0-height tab).
 >
+> **ROCK SHAPE ROUND 3 (v0.18.8 — user: "rocks look like footballs, and I
+> don't like the pyramid thing"):** new shared **`drawRockMound(x,y,z0,r,h,
+> seed,RC,RCD,capC)`** — wide base, top ring at 0.62×, LOW rise, gentle rim
+> jitter (0.88–1.12). Sea rocks = 1–3 mounds side by side (back-to-front
+> sorted; squat skerries, not stacks). Island **peak crags**: the cone-to-a-
+> point (read as a pyramid) replaced with two stacked mounds in the island's
+> own `B.cliff` tones — a rocky summit tor. Rock-shape lesson after three
+> rounds: **wide + low + round wins; tall/tapered/pointed always reads wrong.**
+>
 > **CUSTOM LAND-ASSET SPRITES (2026-07-03, v0.17.0–v0.17.3 — 4 verified batches,
 > console clean, saves reset for a clean fresh start):** all 58 FLORA/Nano Banana
 > sprites (user-generated per `docs/SPRITE_LIST.md`, sources in `~/Desktop/Land
