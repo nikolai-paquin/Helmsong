@@ -551,7 +551,7 @@ function fortStateOf(isl){
   if (e.hp <= 0 && e.dead && (world.elapsed - e.dead) > 840*3){ e.hp = f.max; e.dead = 0; }   // rebuilt in ~3 days
   return e;
 }
-function fortFac(f, st){ return st && st.owner === 'player' ? 'you' : f.fac; }   // a claimed ruin flies YOUR banner
+function fortFac(f, st){ return st && st.owner === 'player' ? 'you' : (st && st.fac) || f.fac; }   // a claimed ruin flies YOUR banner; wars can flip the rest (v0.21)
 function fortHostile(f, st){
   if (st.owner === 'player') return false;                      // your own hold never fires on you
   if (st.aggroT > 0) return true;
@@ -564,11 +564,78 @@ function nearRuin(){   // an unclaimed razed fort within hailing distance — yo
     if (nf.st.hp <= 0 && !nf.st.owner && (!player.hold) && Math.hypot(nf.f.px-ship.x, nf.f.py-ship.y) < 260) return nf;
   return null;
 }
+/* ---- sieges against your hold (V15) — owning a stronghold means defending
+   it: Red Sails raiders periodically besiege it. Far away, the walls bleed on
+   a timer (urgent toasts + the hold guide arrow lead you home); close in, the
+   drain stops and real raiders spawn — sink them to lift the siege. Losing
+   the hold is a SETBACK: banner struck, half the vault spills at the site,
+   the ruin can be re-claimed. Tribute truce also buys peace at home. ---- */
+let holdSiege = null, siegeRollT = 420;
+function startHoldSiege(){
+  const st = fortState.get(player.hold.key); if (!st || st.hp <= 0) return;
+  holdSiege = { t: 180, spawned: false, victoryT: 0 };
+  setToast('⚠ Red Sails besiege your hold at '+bearingWord(player.hold.x, player.hold.y)+' — make sail!', true);
+}
+function endHoldSiege(win){
+  if (win){
+    const st = fortState.get(player.hold.key);
+    if (st) st.hp = Math.min(st.hp + 80, st.maxHp || 380);     // the garrison shores the walls back up
+    setToast('The raiders break — your banner holds', true);
+  }
+  holdSiege = null;
+}
+function holdFalls(){
+  const st = fortState.get(player.hold.key);
+  if (st){ st.hp = 0; st.dead = world.elapsed; st.owner = undefined; }
+  const hx = player.hold.x, hy = player.hold.y;
+  const spill = {};
+  for (const id in player.vault){ const half = Math.floor(player.vault[id]/2); if (half > 0) spill[id] = half; }
+  player.vault = {};
+  lootSpill(hx + 60, hy + 120, 40, spill);                     // half the vault washes out — recoverable if you're quick
+  player.hold = null; holdSiege = null;
+  setToast('☠ Your hold has FALLEN — the banner is struck. Half the vault lies adrift at the ruin', true);
+}
+function stepSieges(dt){
+  if (!player.hold){ holdSiege = null; return; }
+  if (!holdSiege){
+    siegeRollT -= dt;
+    if (siegeRollT <= 0){
+      siegeRollT = 300 + Math.random()*300;
+      if (player.truce > world.elapsed) return;                // tribute buys peace at home too
+      const chance = 0.3 + (repOf('redsails') < -40 ? 0.2 : 0);
+      if (Math.random() < chance) startHoldSiege();
+    }
+    return;
+  }
+  holdSiege.t -= dt;
+  const st = fortState.get(player.hold.key);
+  if (!st){ holdSiege = null; return; }
+  const near = holdDist(ship.x, ship.y) < 2600;
+  if (near && !holdSiege.spawned){                             // the raiders become real when you answer the call
+    holdSiege.spawned = true;
+    const hx = player.hold.x + Math.round((ship.x - player.hold.x)/WORLD_W)*WORLD_W;
+    for (let k=0;k<2;k++){
+      const a = Math.random()*TAU;
+      const e = spawnEnemy(k ? 'brig' : 'corsair', hx + Math.cos(a)*420, player.hold.y + Math.sin(a)*320);
+      if (e){ e.sieger = true; e.farT = -999; }                // they don't cull — they're here for the fort
+    }
+  }
+  if (holdSiege.spawned){
+    if (!enemies.some(e => !e.dead && e.sieger)){ endHoldSiege(true); return; }
+  } else {
+    st.hp -= 2.6*dt;                                           // unanswered, the walls come down in ~2.5 min
+    if (st.hp <= 0){ holdFalls(); return; }
+  }
+  if (holdSiege && holdSiege.t <= 0){
+    setToast('The Red Sails break off the siege — your walls held', true);
+    holdSiege = null;
+  }
+}
 function claimRuin(nf){
   const COST = 800;
   if (player.coin < COST){ setToast('The ruin can be yours for '+COST+' coin — you lack it'); return; }
   player.coin -= COST; SFX.horn(); addShake(3);
-  nf.st.owner = 'player'; nf.st.hp = nf.f.max; nf.st.dead = 0; nf.st.aggroT = 0;
+  nf.st.owner = 'player'; nf.st.hp = nf.f.max; nf.st.maxHp = nf.f.max; nf.st.dead = 0; nf.st.aggroT = 0;
   player.hold = { key: nf.f.key, x: nf.f.px, y: nf.f.py };
   setToast('The ruin is rebuilt under your banner — your stronghold stands!');
 }
@@ -6115,7 +6182,25 @@ function stepWar(dt){
     return;
   }
   war.t -= dt;
-  if (war.t <= 0){ war = null; setToast('The guns fall silent — the contested water clears'); return; }
+  if (war.t <= 0){
+    // when the guns fall silent a nearby fort sometimes changes hands (v0.21)
+    if (Math.random() < 0.35){
+      const wcx = Math.floor(war.x/CHUNK), wcy = Math.floor(war.y/CHUNK);
+      outer: for (let dy=-3;dy<=3;dy++) for (let dx=-3;dx<=3;dx++)
+        for (const isl of genChunk(wcx+dx, wcy+dy).islands){
+          const f = fortOf(isl); if (!f) continue;
+          const st = fortStateOf(isl);
+          if (st.owner === 'player' || st.hp <= 0) continue;
+          const cur = fortFac(f, st);
+          if (cur !== 'crown' && cur !== 'redsails') continue;
+          st.fac = cur === 'crown' ? 'redsails' : 'crown';
+          if (Math.hypot(war.x-ship.x, war.y-ship.y) < 7000)
+            setToast('⚑ Word spreads — the fort near the fighting falls to the '+FACTIONS[st.fac].adj);
+          break outer;
+        }
+    }
+    war = null; setToast('The guns fall silent — the contested water clears'); return;
+  }
   if (Math.hypot(war.x-ship.x, war.y-ship.y) < 4200){
     war.skirmishT -= dt;
     if (war.skirmishT <= 0){
@@ -6429,7 +6514,7 @@ function update(dt) {
   if (ui.mapOpen || ui.port || ui.settings || ui.naming || ui.inv || ui.hold || ship.sinking) stepShipDrift(dt); else stepShip(dt);
   stepFishing(dt);
   stepFleetRoutes(dt);                                        // routed traders sail even while you're docked (v0.20)
-  if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
+  if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepSieges(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
   stepFx(dt); stepDanger(dt); stepEvents(dt); stepNotoriety(dt); stepAudio(dt);
   achT -= dt; if (achT <= 0){ achT = 1; checkAch(); }
   updateCam(dt);
@@ -6536,7 +6621,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.20.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.21.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6561,11 +6646,12 @@ function saveGame() {
     shipClass:player.shipClass, shipsOwned:player.shipsOwned, boatName:player.boatName, loreFound:player.loreFound, flotsamTaken:player.flotsamTaken.slice(-1500),
     ammo:player.ammo, ammoSel:player.ammoSel, ledger:player.ledger, rep:player.rep,
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
-    forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0]),
+    forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0, e.fac||0]),
     fleet: player.fleet, hold: player.hold, vault: player.vault,
     banner: player.banner||null, truce: player.truce||0, pact: !!player.pact, bossCd: player.bossCd||0, bossCds: player.bossCds||{},
     wx: weather.base, wseq: weather.seq, wtimer: Math.round(weather.timer), wstorm: weather.state==='storm' ? 1 : 0,
     war: war ? { x: Math.round(war.x), y: Math.round(war.y), r: war.r, t: Math.round(war.t) } : null,
+    siege: holdSiege ? Math.round(holdSiege.t) : 0,
     notoriety:player.notoriety, bounty:player.bounty, journeys:player.journeys, achievements:player.achievements, sighted:player.sighted,
     explored: Array.from(explored).slice(-3000) })); } catch(e){}   // raised — trimming regressed charted reefs/flows on long voyages (v0.19.4)
 }
@@ -6590,12 +6676,13 @@ function loadGame() {
     for (const k in player.ledger) if (!Array.isArray(player.ledger[k])) delete player.ledger[k];   // v1→v2 ledger migration: drop coordless entries
     (s.stock||[]).forEach(([k,ss,tt]) => groundStock.set(k, { s:ss, t:tt }));
     player.rep = s.rep || {};
-    (s.forts||[]).forEach(([k,hp,dead,own,rz]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(own?{owner:'player'}:{}) }));
+    (s.forts||[]).forEach(([k,hp,dead,own,rz,fc]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(fc?{fac:fc}:{}), ...(own?{owner:'player'}:{}) }));
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
     player.hold = s.hold || null; player.vault = s.vault || {};
     player.banner = s.banner || null; player.truce = s.truce || 0; player.pact = !!s.pact; player.bossCd = s.bossCd || 0; player.bossCds = s.bossCds || {};
     if (s.wx){ weather.base = s.wx; weather.state = s.wx; weather.seq = s.wseq||0; weather.timer = s.wtimer||20; }   // forecasts survive a reload (v0.19.4)
     if (s.war && s.war.t > 0) war = { x:s.war.x, y:s.war.y, r:s.war.r, t:s.war.t, skirmishT:0.5 };
+    if (s.siege > 0 && s.hold) holdSiege = { t: s.siege, spawned: false, victoryT: 0 };   // reload doesn't lift a siege
     if (s.wstorm) setTimeout(() => { try { spawnStorm(ship.x + 600, ship.y - 300); } catch(err){} }, 800);   // saved mid-storm — the squall is still on you
     if (player.banner){ FACTIONS.you.name = player.banner.name; FACTIONS.you.adj = player.banner.name; FACTIONS.you.col = player.banner.col || FACTIONS.you.col; }
     player.loreFound = s.loreFound || []; player.flotsamTaken = s.flotsamTaken || [];
