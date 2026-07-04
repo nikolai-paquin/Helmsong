@@ -1824,6 +1824,7 @@ const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
 const col = c => rgb(tintC(c));
 function quant(c, nd) { const t = nd>0.55?1 : nd>0.18?0.82 : 0.64; return [c[0]*t,c[1]*t,c[2]*t]; }
 const qcol = (c, nd) => rgb(tintC(quant(c, nd)));
+const lift = (c, m) => [Math.min(255,c[0]*m|0), Math.min(255,c[1]*m|0), Math.min(255,c[2]*m|0)];   // sunlit-side lighten
 
 function polyFill(pts, fill, stroke) {
   bctx.beginPath();
@@ -2047,39 +2048,105 @@ function drawIsland(isl) {
       polyFill([proj(p0[0],p0[1],pk.zb), proj(p1[0],p1[1],pk.zb), ap], qcol(B.cliff, nd), col(B.cliffD));
     }
   }
-  // biome flora (each tree carries its tier elevation in tr.z)
-  const bi = isl.biome;
-  const TREE_SPR = { green:'tree_green', tropic:'tree_tropic', dead:'tree_dead', ice:'tree_snow', desert:'cactus' };
+  // biome flora v2 — hash-picked silhouette variants per tree, flat 3-tone
+  // shading (lit upper-left per LIGHT), thin outline like the terrain. Each
+  // tree carries its tier elevation in tr.z. (drawSpriteBuf hook stays dormant.)
+  const bi = isl.biome, OUT = col(PAL.OUTLINE);
+  const blob = (x,y,rx,ry,c,st) => { bctx.beginPath(); bctx.ellipse(x,y,rx,ry,0,0,TAU); if(c){bctx.fillStyle=c;bctx.fill();} if(st){bctx.strokeStyle=st;bctx.lineWidth=1;bctx.stroke();} };
   for (const tr of isl.trees) {
     if (bi==='desert' && (tr.s < 0.9)) continue;   // sparse desert
     const zB = tr.z !== undefined ? tr.z : isl.H;
     const base = proj(tr.x, tr.y, zB);
     const th = (10 + tr.s*8) * (bi==='tropic'?1.4:1);
-    const sk = TREE_SPR[bi];   // sprite flora (buffer-drawn — decided by eye over the crisp overlay); code art below is the fallback
-    if (sk && drawSpriteBuf(sprVar(sk, hash2(tr.x|0, tr.y|0, 53)), tr.x, tr.y, zB, th*1.9)) continue;
+    const v = hash2(tr.x|0, tr.y|0, 53), v2 = hash2(tr.y|0, tr.x|0, 57);
     if (bi==='ice'){
-      // snowy pine: dark-green triangle with a pale cap
-      const topP = proj(tr.x, tr.y, zB+th), midP = proj(tr.x, tr.y, zB+th*0.5), fr=4+tr.s*3;
-      bctx.fillStyle = col(B.tree); polyFill([[midP[0]-fr,midP[1]],[midP[0]+fr,midP[1]],topP], col(B.tree), null);
-      bctx.fillStyle = col([236,244,250]); bctx.fillRect(topP[0]-1, topP[1]-1, 2, 3);
+      // stacked snow pine: 2–3 dark tiers, snow settling on each apex
+      const tiersN = tr.s > 1.05 ? 3 : 2, fr = 3.5 + tr.s*3;
+      const tp0 = proj(tr.x, tr.y, zB + th*0.2);
+      bctx.strokeStyle = col(B.trunk); bctx.lineWidth = 1.5;
+      bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.lineTo(tp0[0],tp0[1]); bctx.stroke();
+      for (let k=0;k<tiersN;k++){
+        const a2 = proj(tr.x, tr.y, zB + th*(0.14 + 0.3*k)), t2 = proj(tr.x, tr.y, zB + th*(0.6 + 0.26*k));
+        const w = fr * (1 - k*0.26);
+        polyFill([[a2[0]-w,a2[1]],[a2[0]+w,a2[1]],t2], col(B.tree), OUT);
+        const my = t2[1] + (a2[1]-t2[1])*0.42, sw = w*0.5;
+        polyFill([t2, [t2[0]-sw,my], [t2[0]+sw,my]], col([230,240,246]), null);
+      }
     } else if (bi==='dead'){
-      // bare trunk + tiny gnarled top
-      const tp = proj(tr.x, tr.y, zB+th*0.9);
-      bctx.strokeStyle = col(B.trunk); bctx.lineWidth = Math.max(1,2*tr.s); bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.lineTo(tp[0],tp[1]); bctx.stroke();
-      bctx.fillStyle = col(B.treeD); bctx.fillRect(tp[0]-1, tp[1]-1, 2, 2);
+      // gnarled dead tree: bent trunk + forking wind-swept branches
+      const lean = (v-0.5)*3;
+      const tp = proj(tr.x+lean, tr.y, zB+th*0.95), mid = proj(tr.x+lean*0.4, tr.y, zB+th*0.5);
+      bctx.strokeStyle = col(B.trunk); bctx.lineCap = 'round';
+      bctx.lineWidth = Math.max(1, 2*tr.s);
+      bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.quadraticCurveTo(mid[0],mid[1],tp[0],tp[1]); bctx.stroke();
+      bctx.lineWidth = Math.max(1, 1.1*tr.s); bctx.strokeStyle = col(B.treeD);
+      const nb = 2 + (v2 > 0.5 ? 1 : 0);
+      for (let k=0;k<nb;k++){
+        const bz = 0.42 + 0.2*k, side = (k%2 ? 1 : -1) * (0.6 + v2*0.8), fz = bz + 0.3;
+        const b0 = proj(tr.x+lean*bz, tr.y, zB+th*bz);
+        const b1 = proj(tr.x+lean*bz + side*3.4*tr.s, tr.y, zB+th*fz);
+        const b2 = proj(tr.x+lean*bz + side*5.2*tr.s, tr.y, zB+th*(fz+0.04));
+        bctx.beginPath(); bctx.moveTo(b0[0],b0[1]); bctx.quadraticCurveTo(b1[0],b1[1],b2[0],b2[1]); bctx.stroke();
+      }
+      bctx.lineCap = 'butt';
     } else if (bi==='desert'){
-      // cactus: short green column with an arm
-      const tp = proj(tr.x, tr.y, zB+th*0.7);
-      bctx.strokeStyle = col(B.tree); bctx.lineWidth = Math.max(2,3*tr.s); bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.lineTo(tp[0],tp[1]); bctx.stroke();
-      const arm=proj(tr.x+4,tr.y,zB+th*0.5); bctx.lineWidth=Math.max(1,2*tr.s); bctx.beginPath(); bctx.moveTo(tp[0],tp[1]+2); bctx.lineTo(arm[0],arm[1]); bctx.stroke();
+      // saguaro: rounded column + 1–2 elbow arms, sunlit ridge, rare bloom
+      const cw = Math.max(2, 3*tr.s), tp = proj(tr.x, tr.y, zB+th*0.8);
+      bctx.lineCap = 'round';
+      bctx.strokeStyle = col(B.tree); bctx.lineWidth = cw;
+      bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.lineTo(tp[0],tp[1]); bctx.stroke();
+      const arms = 1 + (v > 0.55 ? 1 : 0);
+      for (let k=0;k<arms;k++){
+        const side = (k ? -1 : 1) * (v2 > 0.5 ? 1 : -1), az = 0.34 + k*0.2;
+        const a0 = proj(tr.x, tr.y, zB+th*az);
+        const a1 = proj(tr.x+side*3.2*tr.s, tr.y, zB+th*az);
+        const a2 = proj(tr.x+side*3.2*tr.s, tr.y, zB+th*(az+0.28));
+        bctx.lineWidth = cw*0.7;
+        bctx.beginPath(); bctx.moveTo(a0[0],a0[1]); bctx.lineTo(a1[0],a1[1]); bctx.lineTo(a2[0],a2[1]); bctx.stroke();
+      }
+      bctx.strokeStyle = col(lift(B.tree,1.28)); bctx.lineWidth = 1;
+      bctx.beginPath(); bctx.moveTo(base[0]-cw*0.25, base[1]); bctx.lineTo(tp[0]-cw*0.25, tp[1]); bctx.stroke();
+      if (v2 > 0.82){ bctx.fillStyle = col([234,168,150]); bctx.fillRect(tp[0]-1, tp[1]-2, 2, 2); }
+      bctx.lineCap = 'butt';
+    } else if (bi==='tropic'){
+      // palm: curved leaning trunk, frond fan (alternating tones), coconuts
+      const lean = (v-0.5)*6*tr.s;
+      const top2 = proj(tr.x+lean, tr.y, zB+th), mid2 = proj(tr.x+lean*0.35, tr.y, zB+th*0.5);
+      bctx.strokeStyle = col(B.trunk); bctx.lineCap = 'round'; bctx.lineWidth = Math.max(1.5, 2*tr.s);
+      bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.quadraticCurveTo(mid2[0],mid2[1],top2[0],top2[1]); bctx.stroke();
+      const fn = 5 + (v2 > 0.5 ? 1 : 0), fl = 4.5 + tr.s*3.5;
+      bctx.lineWidth = Math.max(1.2, 1.5*tr.s);
+      for (let k=0;k<fn;k++){
+        const fa = Math.PI*(0.06 + 0.88*(k/(fn-1)));
+        const fx = Math.cos(fa)*fl*1.25, fy = -Math.sin(fa)*fl*0.7;
+        bctx.strokeStyle = col(k%2 ? B.treeD : B.tree);
+        bctx.beginPath(); bctx.moveTo(top2[0], top2[1]);
+        bctx.quadraticCurveTo(top2[0]+fx, top2[1]+fy, top2[0]+fx*1.35, top2[1]+fy*0.25+fl*0.5);
+        bctx.stroke();
+      }
+      if (tr.s > 0.85){ bctx.fillStyle = col([116,84,48]); bctx.fillRect(top2[0]-2, top2[1], 2, 2); bctx.fillRect(top2[0]+1, top2[1]+1, 2, 2); }
+      bctx.lineCap = 'butt';
     } else {
-      // green / tropic canopy (palms taller & lighter)
-      const trunkTop = proj(tr.x, tr.y, zB + th*(bi==='tropic'?0.72:0.45));
+      // leafy green — three silhouettes: round oak / cloud canopy / tall poplar
+      const trunkTop = proj(tr.x, tr.y, zB + th*0.5);
       bctx.strokeStyle = col(B.trunk); bctx.lineWidth = Math.max(1, 2*tr.s);
       bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.lineTo(trunkTop[0],trunkTop[1]); bctx.stroke();
-      const fol = proj(tr.x, tr.y, zB + th), fr = (bi==='tropic'?4:5) + tr.s*4;
-      bctx.fillStyle = col(B.tree); bctx.beginPath(); bctx.ellipse(fol[0], fol[1], fr, fr*(bi==='tropic'?0.7:0.92), 0, 0, TAU); bctx.fill();
-      bctx.fillStyle = col(B.treeD); bctx.beginPath(); bctx.ellipse(fol[0]+fr*0.25, fol[1]+fr*0.25, fr*0.55, fr*0.5, 0, 0, TAU); bctx.fill();
+      const fol = proj(tr.x, tr.y, zB + th), fr = 5 + tr.s*4;
+      if (v < 0.4){
+        blob(fol[0], fol[1], fr, fr*0.92, col(B.tree), OUT);
+        blob(fol[0]+fr*0.3, fol[1]+fr*0.3, fr*0.55, fr*0.48, col(B.treeD), null);
+        blob(fol[0]-fr*0.34, fol[1]-fr*0.34, fr*0.42, fr*0.36, col(lift(B.tree,1.22)), null);
+      } else if (v < 0.75){
+        blob(fol[0]-fr*0.55, fol[1]+fr*0.18, fr*0.62, fr*0.55, col(B.tree), OUT);
+        blob(fol[0]+fr*0.58, fol[1]+fr*0.22, fr*0.58, fr*0.5, col(B.treeD), OUT);
+        blob(fol[0]+fr*0.02, fol[1]-fr*0.3, fr*0.7, fr*0.6, col(B.tree), OUT);
+        blob(fol[0]-fr*0.28, fol[1]-fr*0.5, fr*0.36, fr*0.3, col(lift(B.tree,1.22)), null);
+      } else {
+        const pf = proj(tr.x, tr.y, zB + th*1.25), cy2 = (pf[1]+fol[1])/2, hh = (fol[1]-pf[1])*0.5 + fr*0.6;
+        blob(pf[0], cy2, fr*0.55, hh, col(B.tree), OUT);
+        blob(pf[0]-fr*0.2, cy2 - hh*0.25, fr*0.28, hh*0.55, col(lift(B.tree,1.2)), null);
+        blob(pf[0]+fr*0.18, cy2 + hh*0.3, fr*0.3, hh*0.45, col(B.treeD), null);
+      }
     }
   }
 }
@@ -6149,7 +6216,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.17.4';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
