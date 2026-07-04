@@ -2079,10 +2079,22 @@ function drawIsland(isl) {
     }
   }
   // biome flora v2 — hash-picked silhouette variants per tree, flat 3-tone
-  // shading (lit upper-left per LIGHT), thin outline like the terrain. Each
-  // tree carries its tier elevation in tr.z.
-  const bi = isl.biome, OUT = col(PAL.OUTLINE);
-  const blob = (x,y,rx,ry,c,st) => { bctx.beginPath(); bctx.ellipse(x,y,rx,ry,0,0,TAU); if(c){bctx.fillStyle=c;bctx.fill();} if(st){bctx.strokeStyle=st;bctx.lineWidth=1;bctx.stroke();} };
+  // shading (lit upper-left per LIGHT). Canopies are jittered radial polygons
+  // (orb), not ellipses — circles read too geometric; outlines are darkened
+  // foliage, not black (black reads cartoony). Each tree carries tr.z.
+  const bi = isl.biome;
+  const OUT = col(quant(B.treeD || B.tree, 0.3));
+  const orb = (x, y, r, sq, sd2, c, st) => {
+    const m = 9; bctx.beginPath();
+    for (let i=0;i<m;i++){
+      const a2 = (i + 0.5*hash2(i, sd2, 119))/m*TAU, rr = r * lerp(0.76, 1.24, hash2(i, sd2, 117));
+      const px2 = x + Math.cos(a2)*rr, py2 = y + Math.sin(a2)*rr*sq;
+      i ? bctx.lineTo(px2, py2) : bctx.moveTo(px2, py2);
+    }
+    bctx.closePath();
+    if (c){ bctx.fillStyle = c; bctx.fill(); }
+    if (st){ bctx.strokeStyle = st; bctx.lineWidth = 1; bctx.stroke(); }
+  };
   for (const tr of isl.trees) {
     if (bi==='desert' && (tr.s < 0.9)) continue;   // sparse desert
     const zB = tr.z !== undefined ? tr.z : isl.H;
@@ -2162,20 +2174,21 @@ function drawIsland(isl) {
       bctx.strokeStyle = col(B.trunk); bctx.lineWidth = Math.max(1, 2*tr.s);
       bctx.beginPath(); bctx.moveTo(base[0],base[1]); bctx.lineTo(trunkTop[0],trunkTop[1]); bctx.stroke();
       const fol = proj(tr.x, tr.y, zB + th), fr = 5 + tr.s*4;
+      const sd = ((tr.x*7)|0) ^ ((tr.y*13)|0);   // per-tree canopy wobble seed
       if (v < 0.4){
-        blob(fol[0], fol[1], fr, fr*0.92, col(B.tree), OUT);
-        blob(fol[0]+fr*0.3, fol[1]+fr*0.3, fr*0.55, fr*0.48, col(B.treeD), null);
-        blob(fol[0]-fr*0.34, fol[1]-fr*0.34, fr*0.42, fr*0.36, col(lift(B.tree,1.22)), null);
+        orb(fol[0], fol[1], fr, 0.92, sd, col(B.tree), OUT);
+        orb(fol[0]+fr*0.3, fol[1]+fr*0.3, fr*0.5, 0.9, sd+1, col(B.treeD), null);
+        orb(fol[0]-fr*0.34, fol[1]-fr*0.34, fr*0.4, 0.85, sd+2, col(lift(B.tree,1.22)), null);
       } else if (v < 0.75){
-        blob(fol[0]-fr*0.55, fol[1]+fr*0.18, fr*0.62, fr*0.55, col(B.tree), OUT);
-        blob(fol[0]+fr*0.58, fol[1]+fr*0.22, fr*0.58, fr*0.5, col(B.treeD), OUT);
-        blob(fol[0]+fr*0.02, fol[1]-fr*0.3, fr*0.7, fr*0.6, col(B.tree), OUT);
-        blob(fol[0]-fr*0.28, fol[1]-fr*0.5, fr*0.36, fr*0.3, col(lift(B.tree,1.22)), null);
+        orb(fol[0]-fr*0.55, fol[1]+fr*0.18, fr*0.6, 0.88, sd, col(B.tree), OUT);
+        orb(fol[0]+fr*0.58, fol[1]+fr*0.22, fr*0.55, 0.86, sd+1, col(B.treeD), OUT);
+        orb(fol[0]+fr*0.02, fol[1]-fr*0.3, fr*0.66, 0.86, sd+2, col(B.tree), OUT);
+        orb(fol[0]-fr*0.28, fol[1]-fr*0.5, fr*0.34, 0.83, sd+3, col(lift(B.tree,1.22)), null);
       } else {
         const pf = proj(tr.x, tr.y, zB + th*1.25), cy2 = (pf[1]+fol[1])/2, hh = (fol[1]-pf[1])*0.5 + fr*0.6;
-        blob(pf[0], cy2, fr*0.55, hh, col(B.tree), OUT);
-        blob(pf[0]-fr*0.2, cy2 - hh*0.25, fr*0.28, hh*0.55, col(lift(B.tree,1.2)), null);
-        blob(pf[0]+fr*0.18, cy2 + hh*0.3, fr*0.3, hh*0.45, col(B.treeD), null);
+        orb(pf[0], cy2, fr*0.55, hh/(fr*0.55), sd, col(B.tree), OUT);
+        orb(pf[0]-fr*0.2, cy2 - hh*0.25, fr*0.26, (hh*0.55)/(fr*0.26), sd+1, col(lift(B.tree,1.2)), null);
+        orb(pf[0]+fr*0.18, cy2 + hh*0.3, fr*0.28, (hh*0.45)/(fr*0.28), sd+2, col(B.treeD), null);
       }
     }
   }
@@ -6292,7 +6305,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.3';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.4';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
