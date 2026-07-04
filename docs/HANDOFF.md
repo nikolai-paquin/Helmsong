@@ -1009,6 +1009,28 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > tab — `preview_stop` + `preview_start` re-pairs them; then drive state and
 > `render()` inside one eval and screenshot immediately.
 >
+> **AUDIO PROXIMITY + TERROR DIFFICULTY (2026-07-03, v0.18.6–v0.18.7 — user
+> reports; verified, console clean, saves reset):**
+> (1) v0.18.6 **audio proximity** — "hearing sounds from boats I can't see":
+> world one-shots were gated at 700–1200u but the visible sea at standard zoom
+> is ~250u half-width. New **`sfxWorld(x,y,fn,vol,range=460)`** (full volume
+> <35% of range, linear fade to silence at range) now wraps hitEnemy/hitNpc,
+> ship-sinking + monster deaths (550u; boss/terror deaths stay loud), shot-miss
+> splashes, both fire-ignition sites. Telegraph roars 900→600u; the SECOND
+> stronghold-gun site was ungated (first was) — now matched; whirlpool ambient
+> approach band 300→150u past the rim; burning loop 520→460u. Distant war
+> rumble + storm rolls stay far-audible by design (weather, not events).
+> Verified headless by shimming `playSfx` and logging volumes by distance.
+> (2) v0.18.7 **terrors bite back** — user solo'd the Reefjaw on a stock
+> sloop. Terror hp ~doubled (540–680 → ≥21 base-cannon hits ≈ 23s sustained
+> fire), eruption cadence 5–7.5→3.4–4.8s @24 dmg r95, **enrage <40% hp**
+> (faster + third burst on the half-lead), and the underlying kind attacks
+> scale on minibosses (serpent strike 30 / jelly pulse 12 / kraken rake 9 +
+> grab reach 260 / deepmaw spew 24 @1.3s). Scripted verify: parked stock
+> sloop dead in ~5s. Hardening: `spawnEnemy` guards BH/VIEW=0 (zero-size
+> window NaN'd the spawn ring in headless tests — also the cause of the
+> mysterious `islandRadiusAt` crash when spawning from a fresh 0-height tab).
+>
 > **CUSTOM LAND-ASSET SPRITES (2026-07-03, v0.17.0–v0.17.3 — 4 verified batches,
 > console clean, saves reset for a clean fresh start):** all 58 FLORA/Nano Banana
 > sprites (user-generated per `docs/SPRITE_LIST.md`, sources in `~/Desktop/Land
