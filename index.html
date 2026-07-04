@@ -601,7 +601,8 @@ function stepForts(dt){
           st.fireT = 2.6 + Math.random()*0.8;
           const lead = d/300, la = Math.atan2(ship.y + ship.vy*lead - f.py, ship.x + ship.vx*lead - f.px);
           shots.push({ x:f.px, y:f.py, z:30, vx:Math.cos(la)*300, vy:Math.sin(la)*300, vz:26, t:2.2, dmg:13, friendly:false, kind:'round', fac:f.fac, vsPlayer:true });
-          addFx(f.px, f.py, 'hit'); SFX.fortCannon();
+          addFx(f.px, f.py, 'hit');
+          { const pd2 = Math.hypot(f.px-ship.x, f.py-ship.y); if (pd2 < 1400) SFX.fortCannon(pd2 < 600 ? 0.85 : 0.5); }
         }
       }
       if (st.aggroT > 0){                                        // the garrison sorties while under attack
@@ -4862,7 +4863,7 @@ function applyShotFx(t, kind, src='player'){    // special-ammo payloads, shared
   // chain sets slowT on anything, but only ship movement reads it — monsters have no rigging to shred
   if (kind==='chain'){ t.slowT = Math.max(t.slowT||0, 6); }
   else if (kind==='fire'){ t.burnT = Math.max(t.burnT||0, 5); t.burnSrc = src;   // remember the arsonist — burn deaths blame THEM
-    if (Math.hypot(t.x-ship.x, t.y-ship.y) < 700) SFX.fireIgnite(0.55); }
+    sfxWorld(t.x, t.y, v => SFX.fireIgnite(v), 0.55); }
   else if (kind==='grapple'){ grap = { t, timer: 3.2 }; SFX.grapple(); setToast('Grapple holds — haul her alongside!'); }
 }
 function stepShots(dt){
@@ -4909,7 +4910,7 @@ function stepShots(dt){
         if (Math.hypot(n.x-s.x, n.y-s.y) < n.r){ hitNpc(n, s.dmg, s.fac, s.src); applyShotFx(n, s.kind, s.fac); s.t = -1; addFx(s.x,s.y,'hit'); break; } }
     }
     if (s.z <= 0 && s.t > 0){ s.t = -1; addFx(s.x,s.y,'splash');
-      const d = Math.hypot(s.x-ship.x, s.y-ship.y); if (d < 800) SFX.splash(d < 300 ? 0.5 : 0.28); }   // the miss, heard
+      sfxWorld(s.x, s.y, v => SFX.splash(v), 0.5); }   // the miss, heard — only if you could see it land
   }
   for (let i=shots.length-1;i>=0;i--) if (shots[i].t <= 0) shots.splice(i,1);
 }
@@ -4953,14 +4954,14 @@ function spawnEnemy(type, px, py){
 }
 function hitEnemy(e, dmg, src='player'){
   e.hp -= dmg; e.hitT = 0.18;
-  if (Math.hypot(e.x-ship.x, e.y-ship.y) < 800) SFX.hit();
+  sfxWorld(e.x, e.y, v => SFX.hit(v), 0.7);
   if (e.hp <= 0 && !e.dead){ e.dead = true; killEnemy(e, src); }
 }
 function killEnemy(e, src='player'){
   addFx(e.x, e.y, 'burst');
-  { const d = Math.hypot(e.x-ship.x, e.y-ship.y);
-    if (e.ship && d < 1200) SFX.sinkEnemy(d < 500 ? 0.8 : 0.45);
-    else if (!e.ship && d < 1200) SFX.monsterDeath((e.boss||e.miniboss) ? 0.95 : d < 500 ? 0.8 : 0.45); }
+  if (e.boss || e.miniboss) SFX.monsterDeath(0.95);            // a terror's death carries — you were in that fight
+  else if (e.ship) sfxWorld(e.x, e.y, v => SFX.sinkEnemy(v), 0.8, 550);
+  else sfxWorld(e.x, e.y, v => SFX.monsterDeath(v), 0.8, 550);
   if (src !== 'player'){                       // sunk by another power — the spoils still spill for anyone
     const g = {}; if (e.ship && Math.random()<0.6) g[Math.random()<0.5?'rum':'cloth'] = 1;
     lootSpill(e.x, e.y, 15 + (Math.random()*25|0), g);
@@ -5103,7 +5104,7 @@ function stepEnemies(dt){
       e.burnT -= dt; e.hp -= 6*dt;
       if (Math.random() < dt*7) addFx(e.x+(Math.random()-0.5)*20, e.y+(Math.random()-0.5)*12, 'flame');
       const sl = slickAt(e.x, e.y); if (sl && !sl.lit){ sl.lit = true; sl.burnT = 8;
-        if (Math.hypot(sl.x-ship.x, sl.y-ship.y) < 700) SFX.fireIgnite(0.55); }
+        sfxWorld(sl.x, sl.y, v => SFX.fireIgnite(v), 0.55); }
       if (e.hp <= 0){ e.dead = true; killEnemy(e, e.burnSrc || 'player'); continue; }   // credit goes to whoever lit it
     }
     const dx = ship.x-e.x, dy = ship.y-e.y, dist = Math.hypot(dx,dy)||1, ang = Math.atan2(dy,dx);
@@ -5158,7 +5159,7 @@ function stepEnemies(dt){
       [mvx, mvy] = steerClear(e, mvx, mvy);
       e.vx = lerp(e.vx, mvx*72, dt*1.2); e.vy = lerp(e.vy, mvy*72, dt*1.2); e.surf = lerp(e.surf, 1, dt*2); e.heading = tang;
       e.fireT -= dt; if (e.fireT <= 0 && tdist < 380 && (q || !ship.sinking)){ e.fireT = 1.9; enemyFireA(e, tang, !q);
-        if (world.elapsed - (e.roarT||0) > 5 && Math.hypot(e.x-ship.x, e.y-ship.y) < 900){ e.roarT = world.elapsed; SFX.roar('deepmaw', 0.6); } }
+        if (world.elapsed - (e.roarT||0) > 5 && Math.hypot(e.x-ship.x, e.y-ship.y) < 600){ e.roarT = world.elapsed; SFX.roar('deepmaw', 0.6); } }   // a telegraph is only useful if the beast is close enough to matter
     } else if (e.kraken){
       e.timer -= dt;
       // slow menacing orbit at mid-range (barely moves while gripping)
@@ -5222,7 +5223,7 @@ function stepEnemies(dt){
         e.vx = lerp(e.vx, smx*64, dt*1.2); e.vy = lerp(e.vy, smy*64, dt*1.2);
         e.surf = lerp(e.surf, 1, dt*2);
         if (tdist < 130){ e.state='wind'; e.timer=0.8;
-          if (Math.hypot(e.x-ship.x, e.y-ship.y) < 900) SFX.roar('serpent', 0.65); }
+          if (Math.hypot(e.x-ship.x, e.y-ship.y) < 600) SFX.roar('serpent', 0.65); }
       } else if (e.state==='wind'){
         e.vx *= Math.exp(-3*dt); e.vy *= Math.exp(-3*dt); e.surf = lerp(e.surf, 1.5, dt*4);
         if (e.timer <= 0){ e.state='strike'; e.timer=0.5; e.vx=Math.cos(tang)*260; e.vy=Math.sin(tang)*260; }
@@ -5252,6 +5253,15 @@ function damagePlayer(n){
   ship.hp -= n; ship.dmgFlash = 1; addShake(n*0.45);
   if (ship.hp <= 0){ ship.hp = 0; startSink(); }
 }
+// World-anchored one-shots from OTHER entities: full volume close aboard,
+// fading to silence by `range` (~the visible sea at standard zoom, 480 span
+// ≈ 250u half-width). Far events are invisible — they should be inaudible
+// too; phantom crashes/scrapes from off-screen boats read as bugs.
+function sfxWorld(x, y, fn, v=1, range=460){
+  const d = Math.hypot(x-ship.x, y-ship.y);
+  if (d > range) return;
+  fn(v * (d < range*0.35 ? 1 : 1 - (d - range*0.35)/(range*0.65)));
+}
 function startSink(){ ship.sinking = true; ship.sinkT = 0; fishing.active = false; SFX.sinkPlayer(); SFX.stingDeath(); }
 function stepDanger(dt){
   // low-hull warning creak — she groans while she's in danger of going under
@@ -5263,7 +5273,7 @@ function stepDanger(dt){
     ship.hp -= (3 + 7*ship.sail) * dt * 0.55 * (1 - UP.stormResist());  // reef sail + rigging upgrade help
     if (ship.hp <= 0){ ship.hp = 0; startSink(); }
   }
-  const threat = enemies.some(e => !e.dead && Math.hypot(e.x-ship.x, e.y-ship.y) < 520);
+  const threat = enemies.some(e => !e.dead && Math.hypot(e.x-ship.x, e.y-ship.y) < 460);
   if (!threat && weather.state!=='storm' && !ship.sinking && ship.hp < ship.maxhp) ship.hp = Math.min(ship.maxhp, ship.hp + UP.repair()*dt);
   if (ship.dmgFlash > 0) ship.dmgFlash -= dt*2.5;
   if (shake > 0) shake = Math.max(0, shake - dt*30);
@@ -5636,9 +5646,9 @@ function resumeAudio(){
    Add a loop = one SFX_FILES entry + one line here. */
 const AMB_LOOPS = {
   burning: () => (ship.burnT > 0
-    || slicks.some(sl => sl.lit && Math.hypot(sl.x-ship.x, sl.y-ship.y) < 520)
-    || enemies.some(e => !e.dead && e.burnT > 0 && Math.hypot(e.x-ship.x, e.y-ship.y) < 520)
-    || npcs.some(n => !n.dead && n.burnT > 0 && Math.hypot(n.x-ship.x, n.y-ship.y) < 520)) ? 0.5 : 0,
+    || slicks.some(sl => sl.lit && Math.hypot(sl.x-ship.x, sl.y-ship.y) < 460)
+    || enemies.some(e => !e.dead && e.burnT > 0 && Math.hypot(e.x-ship.x, e.y-ship.y) < 460)
+    || npcs.some(n => !n.dead && n.burnT > 0 && Math.hypot(n.x-ship.x, n.y-ship.y) < 460)) ? 0.5 : 0,
   'rain-light': () => weather.state === 'rain' ? 0.32 : 0,
   'rain-storm': () => weather.state === 'storm' ? 0.42 : 0,
   whirlpool: () => {                                           // churn swells as you near the eye
@@ -5648,7 +5658,7 @@ const AMB_LOOPS = {
         if (fl.kind !== 'whirl') continue;
         const d = Math.hypot(fl.x-ship.x, fl.y-ship.y) - fl.r; if (d < bd) bd = d;
       }
-    return bd < 0 ? 0.95 : bd < 300 ? clamp(1 - bd/300, 0, 1) * 0.6 : 0;   // roaring in the funnel, audible on approach
+    return bd < 0 ? 0.95 : bd < 150 ? clamp(1 - bd/150, 0, 1) * 0.55 : 0;   // roaring in the funnel; silent before the churn is in sight
   },
   war: () => {                                                 // far cannon rumble as you close on contested water
     if (!war) return 0;
@@ -5773,7 +5783,7 @@ function playSfx(name, vol=1){                                 // true if a real
 }
 const SFX = {
   fire(){ if (!playSfx('cannon', 0.8)){ noiseBurst(0.25,0.32,900); blip(150,0.18,'square',0.14,55); } },
-  hit(){ if (!playSfx('hit', 0.7)) noiseBurst(0.14,0.24,1700); },
+  hit(v=0.7){ if (!playSfx('hit', v)) noiseBurst(0.14,0.24,1700); },
   catch(){ if (!playSfx('catch', 0.38)) blip(520,0.12,'triangle',0.18,780); },
   coin(){ if (!playSfx('coin', 0.6)){ blip(880,0.07,'square',0.13); blip(1320,0.1,'square',0.1); } },
   thunder(){ if (!playSfx('lightning', 0.85)) noiseBurst(0.6,0.4,300); },   // the bolt itself — sharp crack
@@ -6009,7 +6019,7 @@ function stepNpcs(dt){
 }
 function hitNpc(n, dmg, src='player', by){
   n.hp-=dmg; n.hitT=0.18;
-  if (Math.hypot(n.x-ship.x, n.y-ship.y) < 800) SFX.hit();
+  sfxWorld(n.x, n.y, v => SFX.hit(v), 0.7);
   if (src==='player' && !n.provoked){ n.provoked=true; becomePirate(n); repAdj(facOfNpc(n), -8);
     if (n.navy || n.type==='merchant' || n.type==='trader') n.hostile=true; }   // armed crews defend themselves
   if (by && !by.dead){ n.foe = by; n.foeT = 14; }              // remember the attacker — fight back or flee
@@ -6025,7 +6035,7 @@ function becomePirate(n){
 }
 function killNpc(n, src='player'){
   addFx(n.x,n.y,'burst');
-  { const d = Math.hypot(n.x-ship.x, n.y-ship.y); if (d < 1200) SFX.sinkEnemy(d < 500 ? 0.8 : 0.45); }
+  sfxWorld(n.x, n.y, v => SFX.sinkEnemy(v), 0.8, 550);
   const purse = n.type==='trader'?110 : n.type==='manowar'?70 : n.type==='merchant'?60 : n.type==='patrol'?40 : n.type==='fisher'?20 : 35;
   const goods = {}; goods[n.type==='fisher'?(Math.random()<0.5?'herring':'cod') : (Math.random()<0.5?'cloth':'rum')] = 1+(Math.random()*3|0);
   if (n.rich){ goods.pearls = (goods.pearls||0)+1+(Math.random()*2|0); goods.spice = (goods.spice||0)+1+(Math.random()*2|0);
@@ -6321,7 +6331,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.5';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.6';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
