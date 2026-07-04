@@ -745,25 +745,39 @@ function cycleAmmo(){
 // Cultures paint the world's PEOPLE onto the climate bands: how ports are named
 // and built, who crews the ships, what the markets favour. Factions own; cultures live.
 const CULTURES = {
-  euro:  { name:'the Midlands',  adj:'Midland',  pennant:'#c0402f' },   // the existing baseline look
-  norse: { name:'the Northmen',  adj:'Norse',    pennant:'#8fc3e8' },   // cold seas — longships & stave halls
-  east:  { name:'the Dawnlands', adj:'Dawnland', pennant:'#d8543c' },   // warm eastern seas — junks & pagodas
-  desert:{ name:'the Sunborn',   adj:'Sunborn',  pennant:'#e8b84a' },   // equatorial belt — dhows & obelisks
+  euro:    { name:'the Midlands',       adj:'Midland',    pennant:'#c0402f' },   // the existing baseline look
+  norse:   { name:'the Northmen',       adj:'Norse',      pennant:'#8fc3e8' },   // cold seas — longships & stave halls
+  east:    { name:'the Dawnlands',      adj:'Dawnland',   pennant:'#d8543c' },   // warm eastern seas — junks & pagodas
+  desert:  { name:'the Sunborn',        adj:'Sunborn',    pennant:'#e8b84a' },   // equatorial belt — dhows & obelisks
+  roman:   { name:'the Marble Coast',   adj:'Marbled',    pennant:'#a03028' },   // V16 — villas & crimson galleys
+  greek:   { name:'the Thalassians',    adj:'Thalassian', pennant:'#3e6fae' },   // V16 — white temples & biremes
+  isles:   { name:'the Mist Isles',     adj:'Isleborn',   pennant:'#f0ece4' },   // V16 — torii gates & atakebune
+  mayan:   { name:'the Feathered Shore',adj:'Feathered',  pennant:'#2ea08a' },   // V16 — step pyramids & sea canoes
+  african: { name:'the Goldshore',      adj:'Goldshore',  pennant:'#d8a018' },   // V16 — thatched roundhouses & mtepe
+  egyptian:{ name:'the Riverborn',      adj:'Riverborn',  pennant:'#38b0a0' },   // V16 — mudbrick & feluccas
 };
 function cultureAt(x, y){
   const t = 1 - Math.abs(clamp(y,0,WORLD_H) - EQUATOR) / EQUATOR;       // 0 pole .. 1 equator (as regionAt)
-  if (t < 0.24) return 'norse';
-  if (t > 0.72) return 'desert';
-  return (wrapx(x)/WORLD_W) >= 0.52 ? 'east' : 'euro';                  // eastern hemisphere: the Dawnlands
+  const lon = wrapx(x)/WORLD_W;
+  if (t < 0.24) return 'norse';                                          // the cold belongs to the Northmen everywhere
+  if (t > 0.72) return lon < 0.33 ? 'african' : lon < 0.66 ? 'desert' : 'egyptian';   // three hot seaboards
+  return lon < 0.20 ? 'roman' : lon < 0.40 ? 'greek' : lon < 0.57 ? 'euro'
+       : lon < 0.72 ? 'east' : lon < 0.86 ? 'isles' : 'mayan';           // six temperate seaboards around the world
 }
 function portCulture(isl){ return isl.port.culture || (isl.port.culture = cultureAt(isl.x, isl.y)); }
 const NAME_A = ['Port','Cape','New','Saint','Fort','Old'];
 const NAME_B = ['Hav','Mar','Sel','Dun','Wend','Brack','Tor','Kel','Ash','Fen','Mor','Bryn','Cald','Gale'];
 const NAME_C = ['wick','port','mouth','haven','reach','ton','bay','holm','ford','cove'];
 const CNAMES = {
-  norse: { b:['Skel','Thor','Ulf','Bryn','Frost','Grim','Eir','Vald','Hrafn','Odd'], c:['vik','fjord','holm','stad','nes','gard'], pre:['Nord','Kald'], preP:0.25 },
-  east:  { b:['Kai','Shan','Rin','Haku','Mei','Jin','Yume','Tsuru','Sora','Aka'],    c:['kou','shima','wan','hama','saki','minato'], pre:[], preP:0 },
-  desert:{ b:['Amon','Qas','Zeph','Khet','Sira','Nub','Ras','Asha','Meri','Sef'],    c:['ra','het','oud','ir','ket','sur'], pre:['El'], preP:0.35 },
+  norse:   { b:['Skel','Thor','Ulf','Bryn','Frost','Grim','Eir','Vald','Hrafn','Odd'], c:['vik','fjord','holm','stad','nes','gard'], pre:['Nord','Kald'], preP:0.25 },
+  east:    { b:['Kai','Shan','Rin','Haku','Mei','Jin','Yume','Tsuru','Sora','Aka'],    c:['kou','shima','wan','hama','saki','minato'], pre:[], preP:0 },
+  desert:  { b:['Amon','Qas','Zeph','Khet','Sira','Nub','Ras','Asha','Meri','Sef'],    c:['ra','het','oud','ir','ket','sur'], pre:['El'], preP:0.35 },
+  roman:   { b:['Ost','Corv','Tar','Nol','Vel','Lucr','Sal','Herc','Brund','Puti'],    c:['ium','ia','ana','entum','ona','ae'], pre:['Portus'], preP:0.3 },
+  greek:   { b:['Thal','Kyth','Del','Naxi','Ereb','Mil','Kor','Syra','Lem','Pyl'],     c:['os','ossa','ini','ikos','ea','ion'], pre:[], preP:0 },
+  isles:   { b:['Yuki','Kage','Hoshi','Nami','Kuro','Shiro','Tsuki','Hana','Kawa','Yama'], c:['jima','ura','tsu','hama','zaki','do'], pre:[], preP:0 },
+  mayan:   { b:['Xu','Zac','Itz','Yax','Chak','Tul','Cob','Pak','Nal','Kin'],          c:['tun','al','um','che','kan','mal'], pre:[], preP:0 },
+  african: { b:['Zan','Kil','Mala','Sofa','Mombo','Lam','Pate','Kis','Tang','Bag'],    c:['bar','wa','ni','ndi','za','yu'], pre:[], preP:0 },
+  egyptian:{ b:['Neph','Kar','Abu','Men','Seti','Wad','Beni','Edf','Kom','Luq'],       c:['ket','nak','sir','fis','u','os'], pre:[], preP:0 },
 };
 function portName(cx, cy) {
   const cult = cultureAt(cx*CHUNK + CHUNK*0.5, cy*CHUNK + CHUNK*0.5);
@@ -781,7 +795,9 @@ function portName(cx, cy) {
   if (hash2(cx,cy,200) < 0.5) nm = NAME_A[Math.floor(hash2(cx,cy,201)*NAME_A.length)] + ' ' + nm;
   return nm;
 }
-const CULT_PRODUCE = { norse:['furs','timber','iron'], east:['tea','cloth','pearls'], desert:['spice','salt','cloth'] };
+const CULT_PRODUCE = { norse:['furs','timber','iron'], east:['tea','cloth','pearls'], desert:['spice','salt','cloth'],
+  roman:['cloth','iron','oil'], greek:['oil','cloth','salt'], isles:['tea','pearls','salt'],
+  mayan:['salt','timber','cloth'], african:['salt','spice','timber'], egyptian:['salt','cloth','oil'] };
 function portProfile(cx, cy) {
   const cult = cultureAt(cx*CHUNK + CHUNK*0.5, cy*CHUNK + CHUNK*0.5), cp = CULT_PRODUCE[cult];
   const pick = s => {
@@ -2548,6 +2564,18 @@ const VESSELS = {
               ht:8, rig:'batten', masts:[{x:7,h:20,sail:{sw:6,top:18,bot:3}},{x:-7,h:25,sail:{sw:7.5,top:23,bot:4}}], sterncastle:true },
   dhow:     { ...mkHull([[19,0],[11,-5],[-3,-6.4],[-14,-5.2],[-16,0],[-14,5.2],[-3,6.4],[11,5]], 0.80,0.64),      // Sunborn — one raked mast, great lateen triangle
               ht:6, rig:'lateen', masts:[{x:2,h:24}], bowsprit:4 },
+  galley:   { ...mkHull([[24,0],[13,-4.4],[-6,-5.2],[-18,-4.4],[-22,0],[-18,4.4],[-6,5.2],[13,4.4]], 0.78,0.60),  // Marble Coast — long low galley, crimson square sail (V16)
+              ht:5, rig:'square', masts:[{x:-2,h:24,sail:{sw:7.5,top:22,bot:5}}], bowsprit:8 },
+  bireme:   { ...mkHull([[22,0],[12,-4.8],[-4,-5.6],[-15,-4.6],[-18,0],[-15,4.6],[-4,5.6],[12,4.8]], 0.80,0.62),  // Thalassian — pale bireme, one broad white sail (V16)
+              ht:5, rig:'square', masts:[{x:0,h:23,sail:{sw:7,top:21,bot:5}}], bowsprit:5 },
+  atake:    { ...mkHull([[16,0],[11,-7.2],[-3,-8.4],[-15,-7],[-18,0],[-15,7],[-3,8.4],[11,7.2]], 0.88,0.76),      // Mist Isles — boxy castle-ship, battened white sails (V16)
+              ht:9, rig:'batten', masts:[{x:5,h:20,sail:{sw:7,top:18,bot:4}},{x:-8,h:23,sail:{sw:8,top:21,bot:5}}], sterncastle:true },
+  seacanoe: { ...mkHull([[18,0],[9,-4.2],[-4,-4.8],[-13,-4],[-15,0],[-13,4],[-4,4.8],[9,4.2]], 0.76,0.58),        // Feathered Shore — wide low canoe, one cotton sail (V16)
+              ht:4, rig:'square', masts:[{x:1,h:17,sail:{sw:5.5,top:15,bot:4}}] },
+  mtepe:    { ...mkHull([[19,0],[11,-5.2],[-3,-6.2],[-14,-5],[-16,0],[-14,5],[-3,6.2],[11,5.2]], 0.80,0.64),      // Goldshore — sewn-plank trader, matting lateen (V16)
+              ht:6, rig:'lateen', masts:[{x:2,h:24}], bowsprit:7 },
+  felucca:  { ...mkHull([[18,0],[10,-4.4],[-4,-5.2],[-13,-4.2],[-15,0],[-13,4.2],[-4,5.2],[10,4.4]], 0.78,0.60),  // Riverborn — slim crescent felucca, papyrus lateen (V16)
+              ht:4, rig:'lateen', masts:[{x:1,h:22}], bowsprit:5 },
 };
 const vcfg = k => VESSELS[k] || VESSELS.sloop;
 const RIM = VESSELS.sloop.rim, WL = VESSELS.sloop.wl;   // legacy alias
@@ -4195,6 +4223,60 @@ function drawPortHouse(isl){
     bctx.fillStyle = col([54,40,28]); const dr3 = P(0,6.2,0); bctx.fillRect(dr3[0]-2, dr3[1]-4, 4, 4);  // doorway
     polyFill([P(18,10,0),P(22,10,0),P(21,10,20),P(19,10,20)], col([210,186,142]), col(PAL.OUTLINE));   // obelisk
     polyFill([P(19,10,20),P(21,10,20),P(20,10,24)], '#ffd98a', col(PAL.OUTLINE));                      // gilded tip
+  } else if (cult === 'roman'){
+    // marble-coast villa — white walls, low red tile roof, portico columns
+    polyFill([P(-12,6,0),P(12,6,0),P(12,6,8),P(-12,6,8)], col([226,220,208]), col(PAL.OUTLINE));
+    polyFill([P(12,6,0),P(17,-3,0),P(17,-3,8),P(12,6,8)], col([204,198,186]), col(PAL.OUTLINE));
+    polyFill([P(-13,7,8),P(13,7,8),P(11,0,13),P(-11,0,13)], col([176,84,58]), col(PAL.OUTLINE));
+    polyFill([P(13,7,8),P(17,-3,8),P(14,-4,12),P(11,0,13)], col([150,70,48]), col(PAL.OUTLINE));
+    bctx.strokeStyle = col([238,234,224]); bctx.lineWidth = 1.6;                                   // portico columns
+    for (const gx of [-8,-2,4,10]){ const c1=P(gx,6.4,0), c2=P(gx,6.4,7); bctx.beginPath(); bctx.moveTo(c1[0],c1[1]); bctx.lineTo(c2[0],c2[1]); bctx.stroke(); }
+    bctx.fillStyle = col([54,44,36]); const drR = P(-5,6.2,0); bctx.fillRect(drR[0]-2, drR[1]-4, 4, 4);
+  } else if (cult === 'greek'){
+    // thalassian temple-house — whitewash, pale gable, two columns, blue door
+    polyFill([P(-10,6,0),P(10,6,0),P(10,6,8),P(-10,6,8)], col([236,234,226]), col(PAL.OUTLINE));
+    polyFill([P(10,6,0),P(15,-3,0),P(15,-3,8),P(10,6,8)], col([212,210,200]), col(PAL.OUTLINE));
+    polyFill([P(-12,7,8),P(12,7,8),P(9,0,14),P(-9,0,14)], col([206,200,184]), col(PAL.OUTLINE));
+    polyFill([P(-12,7,8),P(12,7,8),P(0,7,12)], col([224,220,208]), col(PAL.OUTLINE));               // pediment gable
+    bctx.strokeStyle = col([242,240,232]); bctx.lineWidth = 1.8;
+    for (const gx of [-6,6]){ const c1=P(gx,6.4,0), c2=P(gx,6.4,7.4); bctx.beginPath(); bctx.moveTo(c1[0],c1[1]); bctx.lineTo(c2[0],c2[1]); bctx.stroke(); }
+    bctx.fillStyle = col([56,96,158]); const drG = P(0,6.2,0); bctx.fillRect(drG[0]-2, drG[1]-4, 4, 4);
+  } else if (cult === 'isles'){
+    // mist-isles hall — dark timber, wide low eaves; a red torii stands by the water
+    polyFill([P(-11,6,0),P(11,6,0),P(11,6,7),P(-11,6,7)], col([88,70,54]), col(PAL.OUTLINE));
+    polyFill([P(11,6,0),P(16,-3,0),P(16,-3,7),P(11,6,7)], col([70,56,44]), col(PAL.OUTLINE));
+    polyFill([P(-14,8,7),P(14,8,7),P(10,0,12),P(-10,0,12)], col([106,88,66]), col(PAL.OUTLINE));    // wide eaves
+    bctx.fillStyle = col([40,30,22]); const drI = P(0,6.2,0); bctx.fillRect(drI[0]-2, drI[1]-4, 4, 4);
+    bctx.strokeStyle = col([196,62,48]); bctx.lineWidth = 2;                                        // torii gate
+    for (const gx of [24,30]){ const t1=P(gx,12,0), t2=P(gx,12,11); bctx.beginPath(); bctx.moveTo(t1[0],t1[1]); bctx.lineTo(t2[0],t2[1]); bctx.stroke(); }
+    const L1=P(21.5,12,11), L2=P(32.5,12,11), L3=P(22.5,12,9), L4=P(31.5,12,9);
+    bctx.beginPath(); bctx.moveTo(L1[0],L1[1]); bctx.lineTo(L2[0],L2[1]); bctx.moveTo(L3[0],L3[1]); bctx.lineTo(L4[0],L4[1]); bctx.stroke();
+  } else if (cult === 'mayan'){
+    // feathered-shore step pyramid — limestone tiers, red shrine cap
+    polyFill([P(-13,7,0),P(13,7,0),P(13,7,4),P(-13,7,4)], col([196,190,174]), col(PAL.OUTLINE));
+    polyFill([P(13,7,0),P(18,-3,0),P(18,-3,4),P(13,7,4)], col([172,166,150]), col(PAL.OUTLINE));
+    polyFill([P(-9,6,4),P(9,6,4),P(9,6,8),P(-9,6,8)], col([206,200,184]), col(PAL.OUTLINE));
+    polyFill([P(-5,5,8),P(5,5,8),P(5,5,12),P(-5,5,12)], col([216,210,194]), col(PAL.OUTLINE));
+    polyFill([P(-3,4.6,12),P(3,4.6,12),P(3,4.6,15),P(-3,4.6,15)], col([176,74,58]), col(PAL.OUTLINE));   // shrine cap
+    bctx.fillStyle = col([54,44,36]); const drM = P(0,7.2,0); bctx.fillRect(drM[0]-2, drM[1]-3, 4, 3);   // stair door
+  } else if (cult === 'african'){
+    // goldshore roundhouse — warm clay walls, tall conical thatch, carved post
+    polyFill([P(-9,6,0),P(9,6,0),P(11,2,0),P(11,2,6),P(9,6,6),P(-9,6,6),P(-11,2,6),P(-11,2,0)], col([188,140,92]), col(PAL.OUTLINE));
+    polyFill([P(-12,7,6),P(12,7,6),P(0,3,16)], col([168,142,88]), col(PAL.OUTLINE));                 // thatch cone
+    polyFill([P(-12,7,6),P(12,7,6),P(0,7,9)], col([148,124,74]), null);                              // thatch fringe
+    bctx.fillStyle = col([54,40,28]); const drA = P(0,6.2,0); bctx.fillRect(drA[0]-2, drA[1]-4, 4, 4);
+    bctx.strokeStyle = col([106,74,44]); bctx.lineWidth = 2.4;                                       // carved post
+    const pA=P(18,10,0), pB=P(18,10,10); bctx.beginPath(); bctx.moveTo(pA[0],pA[1]); bctx.lineTo(pB[0],pB[1]); bctx.stroke();
+    bctx.fillStyle = col([214,168,68]); bctx.fillRect(pB[0]-2, pB[1]-2, 4, 3);
+  } else if (cult === 'egyptian'){
+    // riverborn mudbrick house + pylon gate — sloped twin towers, turquoise lintel
+    polyFill([P(-11,6,0),P(11,6,0),P(11,6,7),P(-11,6,7)], col([206,182,140]), col(PAL.OUTLINE));
+    polyFill([P(11,6,0),P(16,-3,0),P(16,-3,7),P(11,6,7)], col([182,158,118]), col(PAL.OUTLINE));
+    polyFill([P(-11,6,7),P(11,6,7),P(16,-3,7),P(-6,-3,7)], col([220,196,152]), col(PAL.OUTLINE));    // flat roof
+    bctx.fillStyle = col([54,44,32]); const drE = P(-4,6.2,0); bctx.fillRect(drE[0]-2, drE[1]-4, 4, 4);
+    for (const gx of [20,29]){                                                                       // pylon towers
+      polyFill([P(gx-2.6,11,0),P(gx+2.6,11,0),P(gx+1.8,11,10),P(gx-1.8,11,10)], col([210,186,142]), col(PAL.OUTLINE)); }
+    polyFill([P(17.5,11,10),P(31.5,11,10),P(31.5,11,12),P(17.5,11,12)], col([64,166,152]), col(PAL.OUTLINE));   // faience lintel
   } else {
     // midland stone cottage — the old baseline, now made flesh
     polyFill([P(-11,6,0),P(11,6,0),P(11,6,8),P(-11,6,8)], col([138,132,120]), col(PAL.OUTLINE));       // front wall
@@ -4209,7 +4291,10 @@ function drawPortHouse(isl){
   }
   // hamlet — 1–2 smaller culture dwellings along the shore (seeded per port; skip water)
   const HUT_COL = { euro:[[138,132,120],[116,110,100],[150,70,52]], norse:[[74,58,40],[60,46,32],[92,68,44]],
-                    east:[[146,120,92],[120,96,72],[164,58,44]], desert:[[206,178,130],[186,158,112],[196,168,120]] };
+                    east:[[146,120,92],[120,96,72],[164,58,44]], desert:[[206,178,130],[186,158,112],[196,168,120]],
+                    roman:[[226,220,208],[204,198,186],[176,84,58]], greek:[[236,234,226],[212,210,200],[206,200,184]],
+                    isles:[[88,70,54],[70,56,44],[106,88,66]], mayan:[[196,190,174],[172,166,150],[176,74,58]],
+                    african:[[188,140,92],[164,120,76],[168,142,88]], egyptian:[[206,182,140],[182,158,118],[220,196,152]] };
   const hc = HUT_COL[cult] || HUT_COL.euro, sa = a + Math.PI/2, sd = p.seed>>>0;
   const nh = 1 + (hash2(sd&0xffff, sd>>>16, 91) > 0.45 ? 1 : 0);
   for (let k=0;k<nh;k++){
@@ -6101,10 +6186,16 @@ function nearGroundTo(x, y, range=3){
 
 /* --- NPC ships: a living, trafficked sea --- */
 const CAPTAINS = ['Morrow','Vane','Coely','Redd','Wren','Alcott','Bex','Thorne','Marsh','Quill','Ansel','Pike'];
-const CAPTAINS_C = {   // crews come from somewhere — captains carry their home waters' names (V13)
-  norse: ['Sigrun','Halvar','Eir','Torv','Runa','Ketil','Astrid','Bjorn'],
-  east:  ['Riku','Mei','Haruto','Sana','Jiro','Aoi','Kaede','Ren'],
-  desert:['Nadir','Zahra','Omar','Sef','Layla','Rami','Kesi','Tarek'],
+const CAPTAINS_C = {   // crews come from somewhere — captains carry their home waters' names (V13/V16)
+  norse:   ['Sigrun','Halvar','Eir','Torv','Runa','Ketil','Astrid','Bjorn'],
+  east:    ['Riku','Mei','Haruto','Sana','Jiro','Aoi','Kaede','Ren'],
+  desert:  ['Nadir','Zahra','Omar','Sef','Layla','Rami','Kesi','Tarek'],
+  roman:   ['Marcus','Livia','Cassius','Julia','Titus','Octavia','Gaius','Flavia'],
+  greek:   ['Nikos','Elena','Stavros','Thea','Dimos','Chloe','Petros','Iris'],
+  isles:   ['Takeshi','Yuki','Hana','Kenji','Akira','Emi','Sato','Nori'],
+  mayan:   ['Itzel','Balam','Xoc','Nikte','Ahmak','Zyanya','Kan','Ixchel'],
+  african: ['Amani','Zuberi','Nia','Juma','Asha','Bakari','Imani','Kito'],
+  egyptian:['Neferet','Khay','Anip','Merit','Senmut','Tiye','Paser','Iset'],
 };
 function captainName(x, y){
   const T = CAPTAINS_C[cultureAt(x, y)] || CAPTAINS;
@@ -6154,6 +6245,12 @@ function spawnNpc(type, hostile, px, py){
     if (cult==='norse'){ n.look='longship'; n.sail=[210,196,160]; }
     else if (cult==='east'){ n.look='junk'; n.sail=[214,186,140]; }
     else if (cult==='desert'){ n.look='dhow'; n.sail=[232,220,192]; }
+    else if (cult==='roman'){ n.look='galley'; n.sail=[196,84,70]; }
+    else if (cult==='greek'){ n.look='bireme'; n.sail=[235,235,228]; }
+    else if (cult==='isles'){ n.look='atake'; n.sail=[240,236,228]; }
+    else if (cult==='mayan'){ n.look='seacanoe'; n.sail=[228,218,196]; }
+    else if (cult==='african'){ n.look='mtepe'; n.sail=[216,198,152]; }
+    else if (cult==='egyptian'){ n.look='felucca'; n.sail=[238,230,202]; }
   }
   n.target = pickNpcTarget(n);
   npcs.push(n); return n;
@@ -6621,7 +6718,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.21.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.22.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
