@@ -1997,7 +1997,7 @@ function drawReef(rf){
   }
   if (rf.kind==='sandbar'){                                                 // dry sand sliver above water
     const B = BIOME[REGIONS[regionAt(rf.x,rf.y)].biome] || BIOME.green;
-    polyFill(ring(0.5, 0.8), col(B.sand), col(PAL.OUTLINE));
+    polyFill(ring(0.5, 0.8), col(B.sand), col(quant(B.sand, 0)));
   }
 }
 function drawIsland(isl) {
@@ -2045,8 +2045,8 @@ function drawIsland(isl) {
     }
     return;
   }
-  // beach ring (rocks are bare stone)
-  polyFill(ring(1, 1.2), col(isl.rock ? B.cliffD : B.sand), col(PAL.OUTLINE));
+  // beach ring — outlined in darkened sand, not black (black rims read cartoony)
+  polyFill(ring(1, 1.2), col(B.sand), col(quant(B.sand, 0)));
   // terraced tiers: vertical cliff walls + flat tops, stacked inward and upward
   const tiers = isl.tiers || [{ s:1, h:isl.H }];
   let zBase = 1.2;
@@ -2060,10 +2060,26 @@ function drawIsland(isl) {
       const nd = clamp(Math.cos(mid)*LIGHT[0] + ny*LIGHT[1], 0, 1);
       polyFill([g[i], g[(i+1)%n], tp[(i+1)%n], tp[i]], qcol(B.cliff, nd), col(B.cliffD));
     }
-    polyFill(tp, col(isl.rock ? B.cliff : (ti%2 ? B.top2 : B.top)), col(PAL.OUTLINE));
-    if (ti === tiers.length-1 && !isl.rock)
+    const topC = ti%2 ? B.top2 : B.top;
+    polyFill(tp, col(topC), col(quant(topC, 0)));
+    if (ti === tiers.length-1)
       polyFill(ring(t.s*0.55, t.h), col(ti%2 ? B.top : B.top2), null);
     zBase = t.h;
+  }
+  // surface texture — sparse seeded flecks on sand + tier tops so the flat
+  // fills don't read as cartoon paper
+  {
+    const radAt2 = a => { const fi = ((a%TAU)+TAU)%TAU/TAU*n, i0 = Math.floor(fi)%n, i1 = (i0+1)%n; return lerp(isl.pts[i0].r, isl.pts[i1].r, fi - Math.floor(fi)); };
+    const sd4 = isl.x|0, fn2 = Math.min(70, (isl.r/4)|0);
+    for (let i=0;i<fn2;i++){
+      const a2 = hash2(i, sd4, 141)*TAU, dd = Math.sqrt(hash2(sd4, i, 143));
+      const rr2 = dd * radAt2(a2) * 0.9;
+      let tz = 1.2, tc = B.sand;
+      for (let k=tiers.length-1;k>=0;k--){ if (rr2 <= tiers[k].s*radAt2(a2)*0.88){ tz = tiers[k].h; tc = (k%2 ? B.top2 : B.top); break; } }
+      const p2 = proj(isl.x + Math.cos(a2)*rr2, isl.y + Math.sin(a2)*rr2, tz);
+      bctx.fillStyle = col(hash2(i, sd4+9, 149) > 0.5 ? lift(tc, 1.1) : quant(tc, 0.3));
+      bctx.fillRect(p2[0], p2[1], 2, 1);
+    }
   }
   // rocky peak crag (spire silhouette on some larger islands)
   if (isl.peak && drawSpriteBuf(sprVar('peak_crag', hash2(isl.peak.x|0, isl.peak.y|0, 59)), isl.peak.x, isl.peak.y, isl.peak.zb, (isl.peak.h - isl.peak.zb)*2)){
@@ -6305,7 +6321,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.4';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.5';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
