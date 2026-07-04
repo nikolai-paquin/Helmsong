@@ -29,17 +29,20 @@ hold · ship name). Details in §6's dated entries. **A fifth QA pass (play-feel
 of the reworked menus + new-player flow, 2026-07-02) followed — 5 findings, all
 fixed & verified same-session** (see the PLAY-FEEL PASS entry in §6).
 
-**CUSTOM LAND-ASSET SPRITES — SHIPPED (2026-07-03, v0.17.0–v0.17.3, 4 verified
-batches, console clean).** All 58 FLORA/Nano Banana sprites from
-`docs/SPRITE_LIST.md` are processed (`assets/sprites/`, magenta keyed → alpha)
-and wired: biome trees ×5, culture port architecture (cottage/stave hall+rune
-stone/pagoda/adobe+obelisk), fort keep + razed ruin (banner & siege bar still
-code-drawn on top), sea-stack rocks, peak crags, icebergs, flotsam, loot
-crates/barrels. New **buffer-sprite pipeline** (`drawSpriteBuf` + `sprTint`)
-draws land props INTO the pixel buffer — chunkifies with the terrain and
-depth-sorts against ships for free (decided by eye over the crisp overlay,
-which read as pasted-on stickers). Details in the dated §6 entry. The game is
-**v0.17.3**, a git repo (log = changelog), with 4 save slots.
+**LAND SPRITES RETIRED → CODE-ART VARIETY PASS SHIPPED (2026-07-03,
+v0.17.4–v0.18.2, 4 verified batches, console clean).** The FLORA sprite batch
+(v0.17.0–0.17.3) was wired, verified — and then **rejected by the user in
+play** ("way too detailed, look just wrong, the keying messed stuff up — go
+back to just the simple code assets and refine those"). v0.17.4 empties
+`LAND_SPRITES` (the `drawSpriteBuf`+`sprTint` buffer pipeline remains,
+dormant) and removes `assets/sprites/`. Then the code art itself was upgraded:
+**flora v2** (hash-picked silhouettes per biome: oak/cloud/poplar, curved
+frond palms, gnarled dead forks, stacked snow pines, saguaros w/ arms+blooms),
+**port hamlets** (1–2 shore huts per port + dockside crates/barrels + building
+polish per culture), **sea stacks v2** (crooked faceted stone spires). Details
+in the dated §6 entry. **RULE: Helmsong's art stays code-drawn** — generated
+sprites have now been retired twice (ghost ship, land assets). The game is
+**v0.18.2**, a git repo (log = changelog), with 4 save slots.
 
 **What's next (pick with the user):**
 1. ~~**Play-feel pass**~~ — DONE 2026-07-02 (menus/new-player flow; 5 fixes, §6).
@@ -109,8 +112,8 @@ which read as pasted-on stickers). Details in the dated §6 entry. The game is
   - **Sell all** — market rows now show a **Sell all** button (only when you own >1) next to Buy/Sell; `doSellAll()` dumps the whole stack in one click.
 - **Two-mode map (scroll to zoom):** the open chart (M) now has a ship-centered **LOCAL** mode and a whole-world **WORLD** mode; **scroll** zooms between them (out past `MAP_LOCAL_MAX` flips to world; scroll in returns). `drawMinimap` dispatches to `drawLocalChart`/`drawWorldChart`; the world chart is rendered once to a cached offscreen canvas (`worldChart()` — climate bands + continents + ports over one full period) and blitted, with the player marker/contract pins drawn live on top. `toggleMap()` always opens in local mode. Wheel/gamepad-zoom route to the map when it's open. State: `mapRange`, `mapWorldView`.
   - **World-chart extras:** **continent name labels** (Norhaven/Sundara/Sudreach — `CONTINENT_DEFS[].name`), a **"you are here" readout** (region + pseudo-latitude via `latLabel(y)`: 90°N pole → 0° equator → 90°S), and **click-to-set waypoints**. `mapClick()` inverts the click via the stored `mapGeom` (world or local) and drops a `waypoint {x,y}` (world-mode clicks snap to the ship's nearest period so you steer the short way). The waypoint shows a pulsing crosshair on both charts + minimap (`drawWpMark`), a `Waypoint` guide arrow in-world (`drawGuides`), auto-clears within 200u (`stepDanger`), and clears by clicking its marker or right-click. Debug: `__HS.waypoint` / `__HS.setWaypoint(x,y)`.
-- **Custom sprites — THREE pipelines** (the third, `drawSpriteBuf`, is the land-asset workhorse since v0.17):
-  - **Buffer sprite** (`drawSpriteBuf(key,wx,wy,wz,worldH,pivY)`): draws INTO the pixel buffer (`bctx`) at the call site, so land props pixelate with the terrain AND depth-sort against ships for free (they draw inline in the y-sorted island pass). Day/night via `sprTint` — a tiny cache of pre-darkened (envMul, 1/16th steps) + storm-desaturated (envGray, 1/4 steps) canvas copies, mirroring `tintC`. `LAND_SPRITES{}` registers `assets/sprites/<kebab>-<n>.png` under underscore keys; `sprVar(base, hash)` picks a variant deterministically by world hash. Every call falls back to the old code art when an image is missing. **Used for:** biome trees/cactus, port houses (+ rune stone/obelisk side-props), fort keep + razed ruin, sea-stack rocks, peak crags, icebergs, flotsam, loot crates/barrels.
+- **Custom sprites — THREE pipelines, ALL land use retired (2026-07-03):**
+  - **Buffer sprite** (`drawSpriteBuf(key,wx,wy,wz,worldH,pivY)`): draws INTO the pixel buffer (`bctx`) at the call site, so props would pixelate with the terrain AND depth-sort against ships for free. Day/night via `sprTint` (cache of pre-darkened/desaturated copies). **DORMANT** — `LAND_SPRITES{}` is empty since v0.17.4 (user retired the generated land sprites after seeing them in play; the wired versions live in git v0.17.0–v0.17.3). A few call sites remain (fort/berg/flotsam/loot) and no-op; the code art is canonical.
   - **Single flat sprite** (`SPRITES`/`SPR`, `drawSprite()` → `spriteQueue` → `flushSprites()` crisp after the buffer blit with day/night `filter`). **Only for NON-rotating iso assets** (islands, ports, props). A flat top-down PNG rotated in 2D looks broken on the 3/4-iso camera — do NOT use it for ships.
   - **Directional sprite** (`SPRITES_DIR`/`SPR_DIR`, `drawDirSprite()`): 8 pre-rendered ISO frames per object (bow facing E,SE,S,SW,W,NW,N,NE in that array order = sectors 0..7); picks the frame nearest `heading` and draws it **un-rotated** → keeps the real 3D-iso look for things that turn. **This is the way to do custom ships/monsters.** Proven with the **green ghost ship** (`ship_ghost_r{r}c{c}.png` × 8, sliced/keyed/recolored from a Nano-Banana 3×3 sheet) — but the user later **retired it** ("bring back the style we had before"): the `sprDir/sprLen/sprPivot` keys were removed from `VESSELS.ghost` and the `SPRITES_DIR.ship_ghost` entry is commented out, so the ghost is **code-drawn (tattered rig) again**. The pipeline itself (`drawDirSprite` + the `drawEnemyShip` branch) is intact and the 8 PNGs remain in `assets/`; re-enable per the comment at `SPRITES_DIR`. Frame index = `((round(heading/(π/4))%8)+8)%8`.
   - Asset processing lives in throwaway Python (PIL): flood-fill/global key the baked checkerboard → alpha, optional hue-shift recolor, slice grid, resize uniform, save to `assets/` (Desktop + `/tmp/helmsong-preview`).
@@ -948,6 +951,38 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > (~3.7k genChunk calls wedges the tab for minutes and the CDP session with
 > it) — find POIs via mapPois() or keep scans ≤ ±8 chunks.
 >
+> **SPRITES RETIRED + CODE-ART VARIETY PASS (2026-07-03, v0.17.4–v0.18.2 — 4
+> verified batches, console clean, saves reset):** the user saw the wired land
+> sprites in play and called it — too detailed against the code-drawn world,
+> keying artifacts at game scale; **"go back to just the simple code assets and
+> refine those + make more of them + make them better."** So:
+> (1) v0.17.4 **retirement** — `LAND_SPRITES{}` emptied (pipeline + a few call
+> sites stay dormant, ghost-ship pattern), `assets/sprites/` git-rm'd; all of it
+> recoverable from v0.17.0–v0.17.3.
+> (2) v0.18.0 **flora v2** — the drawIsland tree loop rewritten with hash-picked
+> silhouette variants + flat 3-tone shading + terrain-style outlines: green =
+> round oak / 3-lobe cloud / tall poplar (lit + shadow lobes); tropic = curved
+> leaning palm trunk + 5–6-frond fan + coconuts; dead = bent trunk + wind-swept
+> forks; ice = 2–3 stacked pine tiers w/ snow on each apex; desert = saguaro w/
+> 1–2 elbow arms, sunlit ridge, rare pink bloom. New `lift(c,m)` lighten helper
+> beside `quant()`. Render 2.0ms @ span 420 (fine).
+> (3) v0.18.1 **port hamlets** — every port grows 1–2 smaller culture dwellings
+> (`drawHut`, seeded by port seed, `landAt`-guarded off water) + dockside
+> crates/barrels at the pier root (`drawCrateP`/`drawBarrelP`); building polish:
+> euro sunlit roof ridge · norse roof plank seams · east lacquered corner posts ·
+> desert sunlit dome edge. The dormant sprite block was removed from
+> drawPortHouse (superseded).
+> (4) v0.18.2 **sea stacks v2** — rock islets are now crooked faceted spires:
+> 3–4 shrinking slabs on a seeded random walk, per-face directional shading,
+> **dark plug pass underneath** (crooked slabs open back-face gaps that read as
+> glass — diagnosed by sampling buffer pixels), **dedicated bare-stone palette**
+> (biome cliff colours made ice-water stacks look like glass cones), snow cap in
+> ice waters / gull-bleached cap on ~half elsewhere. Collision/shelf/foam still
+> ride the island polygon.
+> **RULE going forward: Helmsong's art is code-drawn.** Generated-sprite
+> integrations have been retired twice now (green ghost ship, this land set) —
+> refine and diversify the code art instead of importing images.
+>
 > **CUSTOM LAND-ASSET SPRITES (2026-07-03, v0.17.0–v0.17.3 — 4 verified batches,
 > console clean, saves reset for a clean fresh start):** all 58 FLORA/Nano Banana
 > sprites (user-generated per `docs/SPRITE_LIST.md`, sources in `~/Desktop/Land
@@ -1086,6 +1121,7 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 
 **House rules the user cares about:**
 - **No multiplayer** (explicitly declined).
+- **Art is code-drawn.** Generated-sprite integrations were retired twice (ghost ship, the v0.17 land set — "too detailed, look just wrong"). Add variety by refining the code art, not by importing images.
 - Keep the lofi/chill tone: sailing pleasant by default, danger when you *choose* to linger/fight.
 - Verify every change in the preview and keep the console error-free; reset the save so a fresh start is clean.
 

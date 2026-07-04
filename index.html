@@ -2077,7 +2077,7 @@ function drawIsland(isl) {
   }
   // biome flora v2 — hash-picked silhouette variants per tree, flat 3-tone
   // shading (lit upper-left per LIGHT), thin outline like the terrain. Each
-  // tree carries its tier elevation in tr.z. (drawSpriteBuf hook stays dormant.)
+  // tree carries its tier elevation in tr.z.
   const bi = isl.biome, OUT = col(PAL.OUTLINE);
   const blob = (x,y,rx,ry,c,st) => { bctx.beginPath(); bctx.ellipse(x,y,rx,ry,0,0,TAU); if(c){bctx.fillStyle=c;bctx.fill();} if(st){bctx.strokeStyle=st;bctx.lineWidth=1;bctx.stroke();} };
   for (const tr of isl.trees) {

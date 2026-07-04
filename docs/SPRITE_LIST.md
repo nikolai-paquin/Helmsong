@@ -67,13 +67,15 @@
 - Wood: teak `#7a5230`, weathered `#9a7c54`
 - Always: thin near-black outline `#1a1410`-ish, light from upper left
 
-## G — Integration plan (✅ DONE 2026-07-03, v0.17.0–v0.17.3 — see HANDOFF §6)
+## G — Integration plan (⚠️ WIRED v0.17.0–v0.17.3, then RETIRED v0.17.4)
 
-> All 58 sprites processed & wired via the new `drawSpriteBuf` buffer pipeline
-> (buffer won the buffer-vs-crisp call). Notes: house-east take 2 (open-frame
-> pagoda) cut — too wispy in-game; fort-razed toned down (shipped near-white);
-> fort assets kept at 128px (canvas downscale aliases past ~2×); house-euro-4
-> brightened ×1.3. Fallback code art remains at every call site.
+> All 58 sprites were processed & wired via a new `drawSpriteBuf` buffer
+> pipeline — and then **retired after the user saw them in play**: too detailed
+> against the code-drawn world, keying artifacts at game scale. The code art
+> was refined instead (flora v2, port hamlets, sea stacks v2 — v0.18.0–v0.18.2).
+> Everything (pipeline, wiring, processed PNGs) is recoverable from git
+> v0.17.0–v0.17.3 if ever wanted. **House rule since: Helmsong art stays
+> code-drawn.**
 
 - Pipeline: the existing `drawSprite` flat-sprite path (SPRITES/SPR loader) —
   correct for all non-rotating assets. Key decision per HANDOFF: land props
