@@ -41,8 +41,13 @@ frond palms, gnarled dead forks, stacked snow pines, saguaros w/ arms+blooms),
 **port hamlets** (1–2 shore huts per port + dockside crates/barrels + building
 polish per culture), **sea stacks v2** (crooked faceted stone spires). Details
 in the dated §6 entry. **RULE: Helmsong's art stays code-drawn** — generated
-sprites have now been retired twice (ghost ship, land assets). The game is
-**v0.18.2**, a git repo (log = changelog), with 4 save slots.
+sprites have now been retired twice (ghost ship, land assets). A second
+user-feedback round (v0.18.3–0.18.5) then refined the pass further: sea rocks
+became **squat lumpy boulders** ("v2 spires read as worms"), tree canopies
+became **jittered wobble-polygons** ("circles too geometric" — `orb()` helper),
+and the land lost its **near-black rims** ("cartoony") — beach/tier outlines
+are now darkened versions of their own fill + sparse surface flecks. The game
+is **v0.18.5**, a git repo (log = changelog), with 4 save slots.
 
 **What's next (pick with the user):**
 1. ~~**Play-feel pass**~~ — DONE 2026-07-02 (menus/new-player flow; 5 fixes, §6).
@@ -982,6 +987,27 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > **RULE going forward: Helmsong's art is code-drawn.** Generated-sprite
 > integrations have been retired twice now (green ghost ship, this land set) —
 > refine and diversify the code art instead of importing images.
+>
+> **CODE-ART REFINEMENT ROUND 2 (2026-07-03, v0.18.3–v0.18.5 — user feedback on
+> the first pass; 3 verified batches, console clean, saves reset):**
+> (1) v0.18.3 **sea rocks v3** — "the new rocks look like worms": the v2 spire
+> (3–4 wandering slabs) replaced by ONE wide slab + a smaller off-centre cap
+> boulder; every ring re-jitters its per-point radius (`wob`, 0.8–1.2) so the
+> silhouette reads organic; height halved. Keep the dark plug pass (back-face
+> gaps read as glass).
+> (2) v0.18.4 **organic canopies** — "trees are just circles": new `orb(x,y,r,
+> sq,seed,fill,stroke)` = 9-point radial polygon with jittered radius + angle,
+> seeded per tree; all three green silhouettes rebuilt on it; foliage outlines
+> switched from black to darkened leaf tone (`quant(B.treeD, 0.3)`).
+> (3) v0.18.5 **softer land** — "dark outline makes islands cartoony": beach
+> ring + tier tops + sandbar slivers outline in `quant(<their own fill>, 0)`
+> (≈0.64×) instead of `PAL.OUTLINE`; ships/buildings keep crisp outlines.
+> Plus sparse seeded **surface flecks** on sand/tier tops (a `radAt`
+> interpolator over `isl.pts` keeps them inside the lobed coastline).
+> **Harness note:** if preview_eval state and screenshots stop matching
+> (different boat/time per frame), the capture tab has diverged from the eval
+> tab — `preview_stop` + `preview_start` re-pairs them; then drive state and
+> `render()` inside one eval and screenshot immediately.
 >
 > **CUSTOM LAND-ASSET SPRITES (2026-07-03, v0.17.0–v0.17.3 — 4 verified batches,
 > console clean, saves reset for a clean fresh start):** all 58 FLORA/Nano Banana
