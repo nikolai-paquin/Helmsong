@@ -588,7 +588,7 @@ function stepForts(dt){
           if (tgt){
             st.fireT = 2.6;
             const lead = bd/300, la = Math.atan2(tgt.y + tgt.vy*lead - f.py, tgt.x + tgt.vx*lead - f.px);
-            shots.push({ x:f.px, y:f.py, z:30, vx:Math.cos(la)*300, vy:Math.sin(la)*300, vz:26, t:2.2, dmg:13, friendly:false, kind:'round', fac:'you', vsPlayer:false });
+            shots.push({ x:f.px, y:f.py, z:30, vx:Math.cos(la)*300, vy:Math.sin(la)*300, vz:84, t:2.2, dmg:13, friendly:false, kind:'round', fac:'you', vsPlayer:false });   // reach ≈ 420u (v0.19.3)
             addFx(f.px, f.py, 'hit');
             { const pd = Math.hypot(f.px-ship.x, f.py-ship.y); if (pd < 1400) SFX.fortCannon(pd < 600 ? 0.85 : 0.5); }
           }
@@ -601,7 +601,7 @@ function stepForts(dt){
         if (st.fireT <= 0){
           st.fireT = 2.6 + Math.random()*0.8;
           const lead = d/300, la = Math.atan2(ship.y + ship.vy*lead - f.py, ship.x + ship.vx*lead - f.px);
-          shots.push({ x:f.px, y:f.py, z:30, vx:Math.cos(la)*300, vy:Math.sin(la)*300, vz:26, t:2.2, dmg:13, friendly:false, kind:'round', fac:f.fac, vsPlayer:true });
+          shots.push({ x:f.px, y:f.py, z:30, vx:Math.cos(la)*300, vy:Math.sin(la)*300, vz:84, t:2.2, dmg:13, friendly:false, kind:'round', fac:f.fac, vsPlayer:true });   // reach ≈ 420u — no more sniping band (v0.19.3)
           addFx(f.px, f.py, 'hit');
           { const pd2 = Math.hypot(f.px-ship.x, f.py-ship.y); if (pd2 < 1400) SFX.fortCannon(pd2 < 600 ? 0.85 : 0.5); }
         }
@@ -632,7 +632,10 @@ function fortFalls(nf){
   const lx = isl.x + Math.cos(a)*(isl.r*1.35+40), ly = isl.y + Math.sin(a)*(isl.r*1.35+40);
   const goods = f.fac==='tide' ? { relics:2, pearls:2 } : f.fac==='redsails' ? { rum:2, pearls:1 } : { iron:2, cloth:2 };
   if (f.fac==='redsails' && Math.random()<0.6){ const ex = EXOTIC_IDS[Math.floor(Math.random()*EXOTIC_IDS.length)]; goods[ex]=(goods[ex]||0)+1; }
-  lootSpill(lx, ly, 260 + (Math.random()*120|0), goods);
+  nf.st.razes = (nf.st.razes||0) + 1;                          // rebuilt forts hold thinner treasuries (v0.19.3)
+  const plunderMul = Math.max(0.15, Math.pow(0.5, nf.st.razes - 1));
+  lootSpill(lx, ly, Math.round((260 + (Math.random()*120|0)) * plunderMul), goods);
+  if (nf.st.razes > 1) setToast('The rebuilt vaults were thin — word of your raids spreads');
   repAdj(f.fac, -30);
   if (f.fac==='redsails'){ repAdj('crown', 10); repAdj('guild', 10); }
   else if (f.fac==='crown') repAdj('redsails', 10);
@@ -885,6 +888,8 @@ const UP = {
 };
 function switchShip(cls){
   if (!SHIPS[cls] || cls === player.shipClass) return;
+  const newCap = SHIPS[cls].cargo + player.up.hull*10;
+  if (cargoCount() > newCap){ setToast('Her hold is too small for your cargo — sell or vault ' + (cargoCount()-newCap) + ' first'); return; }   // no merchant-hold-at-cutter-speed (v0.19.3)
   if (!player.shipsOwned.includes(cls)){
     const cost = cls==='merchant'?1400 : cls==='frigate'?1800 : 900;
     if (player.coin < cost){ setToast('Need '+cost+' coin for a '+SHIPS[cls].name); return; }
@@ -3887,7 +3892,10 @@ function groundAt(x, y) {
       const d = Math.hypot(g.x-x, g.y-y);
       if (d < g.r) { const v = g.rich * (1 - 0.4*d/g.r) * (0.25 + 0.75*stockOf(g)); if (v > best){ best = v; bg = g; } }
     }
-  for (const c of chums){ const d = Math.hypot(c.x-x, c.y-y); if (d < c.r) best = Math.min(1, best + 0.5*(1-d/c.r)); }   // chum concentrates the fish
+  for (const c of chums){ const d = Math.hypot(c.x-x, c.y-y); if (d < c.r){
+    const k = 1 - d/c.r;
+    best = Math.min(1, bg ? best * (1 + 0.6*k) : best + 0.12*k);   // chum CONCENTRATES a school — it can't conjure fish from bare water (v0.19.3)
+  } }
   return { rich: best, ground: bg };
 }
 const fishing = { active:false, prog:0, toast:'', toastT:0 };
@@ -5135,7 +5143,7 @@ function stepEnemies(dt){
     const region = REGIONS[regionAt(ship.x, ship.y)];
     const lure = (lanternActive() ? 1.4 : 1) * (chumAt(ship.x, ship.y) ? 1.7 : 1);   // lantern-light and blood in the water draw things up
     spawnT = (18 + Math.random()*16) / (Math.max(0.25, region.danger) * lure);   // trade lanes stay chill — danger is sought out
-    if (!nearbyPortWithin(320) && Math.random() < region.danger*0.6*lure) spawnEnemy(pickEnemyType(region));
+    if ((!nearbyPortWithin(320) || chumAt(ship.x, ship.y)) && Math.random() < region.danger*0.6*lure) spawnEnemy(pickEnemyType(region));   // chum baits past harbour safety (v0.19.3)
   }
   // region bosses: the Leviathan rises in the Cursed Deep — fast & guaranteed while
   // the quest calls (step 3; entering cursed advances 2→3 instantly), slower post-quest
@@ -6172,12 +6180,16 @@ function killNpc(n, src='player'){
   addShake(5);
   lootSpill(n.x, n.y, purse+(Math.random()*40|0), goods);
   repAdj(facOfNpc(n), n.navy?-25:-18); repAdj('redsails', 3);   // the powers remember; pirates approve
-  player.notoriety=Math.min(100, player.notoriety + (n.navy?10:8)); player.bounty += n.navy?60:40;
+  player.notoriety=Math.min(100, player.notoriety + (n.navy?10:8)); player.bounty += (n.navy?60:40) + Math.round(purse*0.4) + (n.rich?40:0);   // rich prizes carry rich prices (v0.19.3)
   if (n.ghost) questEvent('kill_ghost');
   setToast(nm+' sunk — cargo adrift');
 }
 function nearestNamedNpc(){ let best=null,bd=130; for (const n of npcs){ if(n.dead||!n.captain||n.hostile) continue; const d=Math.hypot(n.x-ship.x,n.y-ship.y); if(d<bd){bd=d;best=n;} } return best; }
-function hailNpc(n){ setToast(n.captain+' of '+n.shipName+': “'+RUMORS[Math.floor(hash2(n.x|0,n.y|0,3)*RUMORS.length)%RUMORS.length]+'”'); if(Math.random()<0.4) earn(20); }
+function hailNpc(n){
+  setToast(n.captain+' of '+n.shipName+': “'+RUMORS[Math.floor(hash2(n.x|0,n.y|0,3)*RUMORS.length)%RUMORS.length]+'”');
+  if (!n.hailed && Math.random()<0.4) earn(20);                // a captain pays for company once (v0.19.3 — hail-spam income)
+  n.hailed = true;
+}
 function payBounty(){
   if (player.bounty<=0) return;
   if (player.coin<=0){ setToast('You have no coin to put toward it'); return; }
@@ -6454,7 +6466,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.19.2';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.19.3';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6479,7 +6491,7 @@ function saveGame() {
     shipClass:player.shipClass, shipsOwned:player.shipsOwned, boatName:player.boatName, loreFound:player.loreFound, flotsamTaken:player.flotsamTaken.slice(-250),
     ammo:player.ammo, ammoSel:player.ammoSel, ledger:player.ledger, rep:player.rep,
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
-    forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0]),
+    forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0]),
     fleet: player.fleet, hold: player.hold, vault: player.vault,
     banner: player.banner||null, truce: player.truce||0, pact: !!player.pact, bossCd: player.bossCd||0, bossCds: player.bossCds||{},
     notoriety:player.notoriety, bounty:player.bounty, journeys:player.journeys, achievements:player.achievements, sighted:player.sighted,
@@ -6506,7 +6518,7 @@ function loadGame() {
     for (const k in player.ledger) if (!Array.isArray(player.ledger[k])) delete player.ledger[k];   // v1→v2 ledger migration: drop coordless entries
     (s.stock||[]).forEach(([k,ss,tt]) => groundStock.set(k, { s:ss, t:tt }));
     player.rep = s.rep || {};
-    (s.forts||[]).forEach(([k,hp,dead,own]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, ...(own?{owner:'player'}:{}) }));
+    (s.forts||[]).forEach(([k,hp,dead,own,rz]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(own?{owner:'player'}:{}) }));
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
     player.hold = s.hold || null; player.vault = s.vault || {};
     player.banner = s.banner || null; player.truce = s.truce || 0; player.pact = !!s.pact; player.bossCd = s.bossCd || 0; player.bossCds = s.bossCds || {};
