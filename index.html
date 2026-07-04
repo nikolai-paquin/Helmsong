@@ -3833,12 +3833,17 @@ function drawFort(isl){
   const s = clamp(isl.r*0.12, 12, 22), zb = 8;
   const P = (dx,dy,dz) => proj(f.px+dx*s, f.py+dy*s, zb+dz*s);
   if (st.hp <= 0){                                            // rubble + smoke — the fort will be rebuilt in time
-    polyFill([P(-1.1,0.5,0),P(1.1,0.5,0),P(0.8,-0.4,0.35),P(-0.6,-0.5,0.3)], col([104,100,94]), col(PAL.OUTLINE));
-    polyFill([P(-0.5,0.2,0.3),P(0.5,0.3,0.32),P(0.1,-0.2,0.7)], col([88,84,80]), col(PAL.OUTLINE));
+    if (!drawSpriteBuf('fort_razed_1', f.px, f.py, zb, s*2.1)){
+      polyFill([P(-1.1,0.5,0),P(1.1,0.5,0),P(0.8,-0.4,0.35),P(-0.6,-0.5,0.3)], col([104,100,94]), col(PAL.OUTLINE));
+      polyFill([P(-0.5,0.2,0.3),P(0.5,0.3,0.32),P(0.1,-0.2,0.7)], col([88,84,80]), col(PAL.OUTLINE));
+    }
     for (let i=0;i<3;i++){ const t=(world.elapsed*0.35+i*0.33)%1; const p=P(0.1+Math.sin(world.elapsed+i)*0.2, 0, 0.6+t*1.6);
       bctx.fillStyle=`rgba(120,116,110,${0.4*(1-t)})`; bctx.fillRect(p[0]-1,p[1]-1,2+t*2,2+t*2); }
     return;
   }
+  // sprite keep (FLORA batch) — the faction banner + siege bar stay code-drawn on top
+  const sprF = drawSpriteBuf('fort_1', f.px, f.py, zb, s*2.6);
+  if (!sprF){
   // curtain walls — front face, side face, wall top (col() applies the env tint itself)
   polyFill([P(-1,0.8,0),P(1,0.8,0),P(1,0.8,0.6),P(-1,0.8,0.6)], col([96,92,86]), col(PAL.OUTLINE));
   polyFill([P(1,0.8,0),P(1.35,0.15,0),P(1.35,0.15,0.6),P(1,0.8,0.6)], col([80,76,72]), col(PAL.OUTLINE));
@@ -3851,16 +3856,18 @@ function drawFort(isl){
   polyFill([P(-0.35,0.25,1.5),P(0.35,0.25,1.5),P(0.6,-0.1,1.5),P(-0.1,-0.1,1.5)], col([132,128,120]), col(PAL.OUTLINE));
   bctx.fillStyle = col([30,30,34]);                           // gun ports
   for (let i=0;i<3;i++){ const p=P(-0.6+i*0.6, 0.8, 0.32); bctx.fillRect(p[0]-1, p[1]-1, 3, 2); }
-  // faction banner on the keep
-  const b0=P(0,0.05,1.5), b1=P(0,0.05,2.15);
+  }
+  // faction banner on the keep (the sprite tower tip sits higher than the code keep's)
+  const bt = sprF ? 2.4 : 1.5;
+  const b0=P(0,0.05,bt), b1=P(0,0.05,bt+0.65);
   bctx.strokeStyle=col(PAL.MAST); bctx.lineWidth=1.5; bctx.beginPath(); bctx.moveTo(b0[0],b0[1]); bctx.lineTo(b1[0],b1[1]); bctx.stroke();
   const wav=Math.sin(world.elapsed*3+isl.x)*0.12;
-  const c1=P(0,0.05,2.15), c2=P(0,0.05,1.86), c3=P(0.55,0.05+wav,2.0);
+  const c1=P(0,0.05,bt+0.65), c2=P(0,0.05,bt+0.36), c3=P(0.55,0.05+wav,bt+0.5);
   bctx.fillStyle = FACTIONS[fortFac(f, st)].col;
   bctx.beginPath(); bctx.moveTo(c1[0],c1[1]); bctx.lineTo(c2[0],c2[1]); bctx.lineTo(c3[0],c3[1]); bctx.closePath(); bctx.fill();
   bctx.strokeStyle=col(PAL.OUTLINE); bctx.lineWidth=1; bctx.stroke();
   if (st.hp < f.max){                                         // siege damage bar
-    const p=P(0,0,2.45);
+    const p=P(0,0,bt+0.95);
     bctx.fillStyle='rgba(0,0,0,0.5)'; bctx.fillRect(p[0]-11, p[1], 22, 3);
     bctx.fillStyle='#c85040'; bctx.fillRect(p[0]-11, p[1], Math.round(22*clamp(st.hp/f.max,0,1)), 3);
   }
@@ -6132,7 +6139,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.17.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.17.2';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
