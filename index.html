@@ -911,9 +911,65 @@ const ESCORT_COST = { sloop:500, cutter:800, merchant:1200, frigate:1600 };
 function syncEscorts(){
   escorts.length = 0;
   player.fleet.forEach((f, i) => {
+    if (f.route) return;                                       // ships on a trade route sail their own waters (v0.20)
     const a = ship.heading + Math.PI + (i===0 ? 0.5 : -0.5);
     escorts.push({ f, x: ship.x + Math.cos(a)*70, y: ship.y + Math.sin(a)*70, vx:0, vy:0, heading: ship.heading, fireT: 2, hitT: 0 });
   });
+}
+/* ---- fleet trade routes (V15) — send an escort trading between two ports:
+   abstract legs (a timer, not a simulated hull), coin per completed leg,
+   raid rolls scaled by the route's waters. Passive, raidable, recallable. ---- */
+function sendTrading(i){
+  const f = player.fleet[i]; if (!f || f.route) return;
+  const from = ui.port; if (!from){ setToast('Routes are assigned while docked'); return; }
+  const p0 = from.port;
+  const cx = Math.floor(p0.dockX/CHUNK), cy = Math.floor(p0.dockY/CHUNK);
+  let best = null;
+  for (let dy=-8;dy<=8;dy++) for (let dx=-8;dx<=8;dx++)
+    for (const isl of genChunk(cx+dx, cy+dy).islands){
+      if (!isl.port || isl.port.name === p0.name) continue;
+      const d = Math.hypot(isl.port.dockX-p0.dockX, isl.port.dockY-p0.dockY);
+      if (d < 1800 || d > 8200) continue;
+      if (!best || d < best.d) best = { d, isl };
+    }
+  if (!best){ setToast('No trade partner within reach of '+p0.name); return; }
+  const pt = best.isl.port, mid = { x:(p0.dockX+pt.dockX)/2, y:(p0.dockY+pt.dockY)/2 };
+  const danger = Math.max(REGIONS[regionAt(p0.dockX,p0.dockY)].danger,
+                          REGIONS[regionAt(mid.x,mid.y)].danger,
+                          REGIONS[regionAt(pt.dockX,pt.dockY)].danger);
+  const legTime = clamp(best.d/140, 25, 90);
+  const income = Math.round(legTime * (0.35 + danger*0.25) * (1 + SHIPS[f.cls].cargo/50));   // rougher water pays better — and bleeds more
+  f.route = { fromName: p0.name, toName: pt.name, legTime, legT: legTime, income, danger: +danger.toFixed(2), back: false };
+  syncEscorts();
+  setToast('The '+f.name+' begins trading '+p0.name+' ↔ '+pt.name+'  (+'+income+'c per leg)');
+}
+function recallTrader(i){
+  const f = player.fleet[i]; if (!f || !f.route) return;
+  f.route = null; syncEscorts();
+  setToast('The '+f.name+' breaks off her route and rejoins your wake');
+}
+function stepFleetRoutes(dt){
+  for (let i = player.fleet.length-1; i >= 0; i--){
+    const f = player.fleet[i]; if (!f.route) continue;
+    const r = f.route;
+    r.legT -= dt;
+    if (r.legT > 0) continue;
+    const here = r.back ? r.fromName : r.toName;
+    const raidP = (0.10 + 0.22*Math.max(0, r.danger - 0.4)) * (player.truce > world.elapsed ? 0.5 : 1);   // tribute buys her passage too
+    if (Math.random() < raidP){
+      f.hp -= 22 + Math.random()*20;
+      if (f.hp <= 0){
+        setToast('☠ The '+f.name+' is lost to raiders off '+here+' — her route ends', true);
+        player.fleet.splice(i, 1); syncEscorts(); continue;
+      }
+      setToast('⚠ The '+f.name+' was raided off '+here+' — she limps on ('+(f.hp|0)+' hull)', true);
+    } else {
+      earn(r.income);
+      setToast('♦ The '+f.name+' docks at '+here+'  +'+r.income+' coin');
+      f.hp = Math.min(SHIPS[f.cls].hp, f.hp + 8);              // harbour patchwork between legs
+    }
+    r.back = !r.back; r.legT = r.legTime;
+  }
 }
 function buyEscort(cls){
   if (player.fleet.length >= 2){ setToast('Your fleet is full — two escorts is the most you can lead'); return; }
@@ -4172,7 +4228,7 @@ function openPort(isl){
   recordLedger(isl);                       // the hold's price ledger notes what this market pays
   ui.inv = false;
   ship.hp = ship.maxhp;                    // docking patches up the hull
-  for (const f of player.fleet) f.hp = SHIPS[f.cls].hp;   // the yard sees to your escorts too
+  for (const f of player.fleet) if (!f.route) f.hp = SHIPS[f.cls].hp;   // the yard sees to the escorts at your side (traders patch up on their own legs)
   if (!player.visited.includes(isl.key)) player.visited.push(isl.key);
   completeDeliveries(isl);                  // fulfil any delivery contracts targeting here
   questEvent('dock');
@@ -4352,14 +4408,18 @@ function drawCrewTab(isl, ax, ay, aw){
   if (!player.fleet.length){ ctx.fillStyle='rgba(233,222,198,0.35)'; ctx.font=fnt(12); ctx.fillText('you sail alone', ax+6, ry+2); ry+=26; }
   player.fleet.forEach((f,i)=>{
     ctx.font=fnt(12); ctx.textAlign='left'; ctx.fillStyle='#e9dec6';
-    ctx.fillText('the '+f.name+' — '+SHIPS[f.cls].name, ax+6, ry+4);
-    const dbw=btnW('Dismiss',10,8), bhx = ax+aw-dbw-124;                        // hull bar sits WITH its ship, beside Dismiss
+    ctx.fillText('the '+f.name+' — '+(f.route ? 'trading '+f.route.fromName+' ↔ '+f.route.toName : SHIPS[f.cls].name), ax+6, ry+4);
+    if (f.route){ ctx.font=fntS(8); ctx.fillStyle='rgba(233,222,198,0.5)';
+      ctx.fillText('+'+f.route.income+'c per leg · next in '+Math.max(0,f.route.legT|0)+'s', ax+6, ry+20); }
+    const dbw=btnW('Dismiss',10,8), tlbl=f.route?'Recall':'Send out', tw=btnW(tlbl,10,8);
+    const bhx = ax+aw-dbw-tw-6-124;                                             // hull bar sits WITH its ship, beside the buttons
     ctx.font=fntS(8); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('hull', bhx-30, ry+7);
     ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(bhx-1, ry+7, 112, 10);
     ctx.strokeStyle='rgba(20,12,6,0.8)'; ctx.lineWidth=1; ctx.strokeRect(bhx-1, ry+7, 112, 10);
     ctx.fillStyle='#9ad17a'; ctx.fillRect(bhx+1, ry+9, Math.round(108*clamp(f.hp/SHIPS[f.cls].hp,0,1)), 6);
+    portButtons.push(mkBtn(ax+aw-dbw-tw-6, ry, tw, 24, tlbl, (k=>()=>{ player.fleet[k] && player.fleet[k].route ? recallTrader(k) : sendTrading(k); })(i)));
     portButtons.push(mkBtn(ax+aw-dbw, ry, dbw, 24, 'Dismiss', (k=>()=>dismissEscort(k))(i)));
-    ry+=30;
+    ry += f.route ? 36 : 30;
   });
   if (player.fleet.length < 2){
     ctx.font=fntS(9); ctx.fillStyle='rgba(233,222,198,0.45)'; ctx.fillText('hire another escort:', ax+6, ry+2); ry+=18;
@@ -6368,6 +6428,7 @@ function update(dt) {
   world.elapsed += dt; stepTime(dt); stepWind(dt); stepWeather(dt);
   if (ui.mapOpen || ui.port || ui.settings || ui.naming || ui.inv || ui.hold || ship.sinking) stepShipDrift(dt); else stepShip(dt);
   stepFishing(dt);
+  stepFleetRoutes(dt);                                        // routed traders sail even while you're docked (v0.20)
   if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
   stepFx(dt); stepDanger(dt); stepEvents(dt); stepNotoriety(dt); stepAudio(dt);
   achT -= dt; if (achT <= 0){ achT = 1; checkAch(); }
@@ -6475,7 +6536,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.19.4';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.20.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
