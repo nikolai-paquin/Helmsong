@@ -1,5 +1,12 @@
 # Helmsong v0.18.9 — Four-Lens QA Report (2026-07-03)
 
+> **STATUS: ALL FIVE FIX BATCHES SHIPPED & VERIFIED same-day —
+> v0.19.0 (terrors) · v0.19.1 (danger comms) · v0.19.2 (wrap+traps) ·
+> v0.19.3 (economy) · v0.19.4 (longevity). See git log for per-batch
+> verification notes. Balance after the fix: stock sloop escapes a terror
+> rise untouched · lvl-2 cutter kills the Reefjaw in ~25s · maxed frigate
+> ~11s through two pressure dives (was 3.0s untouched).**
+
 > Method: one hands-on playtest driven with real inputs in the preview (fresh
 > newbie session → fishing → docking → trading → pirate duel → terror fight
 > with a maxed frigate → save/load parity), plus two parallel deep audits:

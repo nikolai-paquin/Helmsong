@@ -49,12 +49,22 @@ and the land lost its **near-black rims** ("cartoony") — beach/tier outlines
 are now darkened versions of their own fill + sparse surface flecks. The game
 is **v0.18.5**, a git repo (log = changelog), with 4 save slots.
 
-**⚠ NEXT WORK QUEUE: [`PLAYTEST_V18.md`](PLAYTEST_V18.md)** — a four-lens QA
-report (hands-on + systems audit + UX audit, 2026-07-03) with ~30 verified
-findings in 5 suggested fix batches. Headliners: terror/boss balance broken at
-both ends (maxed frigate kills the Reefjaw in 3s; enemy shots under-range
-their own AI — dread parks beyond its own reach), danger communication needs
-an urgent-toast system, and delivery contracts aren't E–W wrap-aware.
+**✅ PLAYTEST_V18 QA CYCLE COMPLETE (2026-07-03, v0.19.0–v0.19.4).** The
+four-lens QA report ([`PLAYTEST_V18.md`](PLAYTEST_V18.md), ~30 findings) was
+fixed in 5 verified batches the same day: **terrors done right** (enemy iron
+lands at its target — vz from range; terror hp 900–1200 + Leviathan 1300 +
+3s pressure dives at 2/3 & 1/3 hull; 10s rise banner + delayed first volley;
+eruptions hunt escorts; rival kill-blows grant rest) · **danger speaks**
+(urgent-toast channel, gated-sea entry warnings, ☠ legend, burn/whirl
+banners, WANTED how-to line) · **wrap + traps** (wrap-aware deliveries,
+respawn never lands in unfitted gate water, warn-then-felony piracy,
+M/I-in-hold guards, rebind swap, reserved Sell-all, minimap-click-opens-
+chart) · **honest economy** (chum concentrates instead of conjures + pierces
+port bubble, fort guns reach 420u + plunder halves per raze, cargo-cap class
+switch, hail pays once, bounty scales with plunder) · **longevity** (chart
+sweep capped + chunkCache LRU 3200 → max-zoom chart 76.7→4.7ms, ImageData
+reuse, weather/war persist across reload, save trims raised, jelly bounty,
+faction initials, badge chip, verb-first ammo buttons).
 
 **What's next (pick with the user):**
 1. ~~**Play-feel pass**~~ — DONE 2026-07-02 (menus/new-player flow; 5 fixes, §6).
