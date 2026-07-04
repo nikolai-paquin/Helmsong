@@ -1031,6 +1031,16 @@ per-frame now); autosave is real-time-throttled — hidden tabs may not autosave
 > window NaN'd the spawn ring in headless tests — also the cause of the
 > mysterious `islandRadiusAt` crash when spawning from a fresh 0-height tab).
 >
+> **QUICK AMMO SWAP (v0.18.9 — user: "we never added a way to swap the kind
+> of cannonball"):** `cycleAmmo()` cycles round + owned specials in rack order
+> (wraps; 'Loaded: …×N' toast; hint when only round aboard). Wired three ways:
+> **R** (new `ammo` bind in DEFAULT_KEYS — settings Controls tab is now 11
+> keyboard rows, pitch 26→25 + bind buttons h24 to clear the footer, intro key
+> list updated), **clicking the action-bar cannon slot** (now a real button —
+> glows gold while a special is loaded, hotkey chip reads R; firing stays LMB
+> on the water), and the original rack in the captain's screens. Gamepad has
+> no cycle button yet (rack still works; add a `bindP.ammo` if wanted).
+>
 > **ROCK SHAPE ROUND 3 (v0.18.8 — user: "rocks look like footballs, and I
 > don't like the pyramid thing"):** new shared **`drawRockMound(x,y,z0,r,h,
 > seed,RC,RCD,capC)`** — wide base, top ring at 0.62×, LOW rise, gentle rim
