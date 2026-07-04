@@ -1445,6 +1445,7 @@ function pollGamepad(){
   if (edge(bindP.mute)) toggleMute();
   if (edge(bindP.lantern)) toggleLantern();
   if (edge(bindP.map)) toggleMap();
+  if (edge(bindP.ammo) && world.running && !ship.sinking) cycleAmmo();
   if (edge(bindP.zoomIn)) { if (ui.mapOpen) mapZoomIn(); else applyZoom(viewSpan*0.83); }
   if (edge(bindP.zoomOut)) { if (ui.mapOpen) mapZoomOut(); else applyZoom(viewSpan*1.2); }
 }
@@ -3589,14 +3590,14 @@ function drawSettings(){
       ctx.textBaseline='top';
       settingsButtons.push(b);
     };
-    ry=py+104;   // 11 keyboard rows since the ammo bind — pitch trimmed 26→25 to clear the footer
+    ry=py+98;   // 11 keyboard + 7 gamepad rows — pitches 24/25 to clear the footer (v0.22.2)
     ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('KEYBOARD', px+48, ry); ry+=22;
     for (const [a,label] of [['up','Sail up'],['down','Reef sail'],['left','Turn left'],['right','Turn right'],['anchor','Anchor'],['action','Action / dock'],['lantern','Lantern'],['ammo','Swap ammo'],['map','Map'],['inv','Hold / inventory'],['mute','Mute']]){
-      mkRow(label, (bindK[a]===' '?'space':bindK[a]).toUpperCase(), 'key', a, ry); ry+=25;
+      mkRow(label, (bindK[a]===' '?'space':bindK[a]).toUpperCase(), 'key', a, ry); ry+=24;
     }
     ry+=4; ctx.textAlign='left'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('GAMEPAD', px+48, ry); ry+=22;
-    for (const [a,label] of [['fire','Fire'],['action','Action'],['lantern','Lantern'],['map','Map'],['anchor','Anchor'],['mute','Mute']]){
-      mkRow(label, 'button '+bindP[a], 'pad', a, ry); ry+=25;
+    for (const [a,label] of [['fire','Fire'],['action','Action'],['ammo','Swap ammo'],['lantern','Lantern'],['map','Map'],['anchor','Anchor'],['mute','Mute']]){
+      mkRow(label, 'button '+bindP[a], 'pad', a, ry); ry+=24;
     }
     { const w=btnW('Reset defaults',11,10); const rb={ x:px+48, y:py+ph-58, w, h:30, reset:true };
       brassButton(rb.x,rb.y,rb.w,rb.h,'Reset defaults',{ hov:hit(rb), active:hit(rb) }); settingsButtons.push(rb); }
@@ -3726,7 +3727,7 @@ function drawBossBar(){
 }
 function drawTouchUI(){
   ctx.save();
-  const jx = touch.joyId>=0 ? touch.jcx : 94, jy = touch.joyId>=0 ? touch.jcy : H-94;
+  const jx = touch.joyId>=0 ? touch.jcx : 94, jy = touch.joyId>=0 ? touch.jcy : H-214;   // idle ghost sits clear of the compass (v0.22.2)
   ctx.strokeStyle='rgba(233,222,198,0.3)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(jx,jy,46,0,TAU); ctx.stroke();
   const kx = touch.joyId>=0 ? clamp(touch.jx,jx-46,jx+46) : jx, ky = touch.joyId>=0 ? clamp(touch.jy,jy-46,jy+46) : jy;
   ctx.fillStyle='rgba(255,217,138,0.5)'; ctx.beginPath(); ctx.arc(kx,ky,20,0,TAU); ctx.fill();
@@ -6626,7 +6627,7 @@ function stepNotoriety(dt){ if(player.notoriety>0 && player.bounty<=0) player.no
 
 /* --- input bindings + settings --- */
 const DEFAULT_KEYS = { up:'w', down:'s', left:'a', right:'d', anchor:'shift', action:' ', map:'m', inv:'i', mute:'p', lantern:'l', ammo:'r' };
-const DEFAULT_PAD  = { fire:7, action:2, map:9, mute:3, anchor:1, zoomIn:5, zoomOut:4, lantern:0 };
+const DEFAULT_PAD  = { fire:7, action:2, map:9, mute:3, anchor:1, zoomIn:5, zoomOut:4, lantern:0, ammo:6 };
 let bindK = {...DEFAULT_KEYS}, bindP = {...DEFAULT_PAD};
 function K(a){ return keys[bindK[a]]; }
 try { const bs=JSON.parse(localStorage.getItem('helmsong_binds')); if(bs){ if(bs.k) bindK={...DEFAULT_KEYS,...bs.k}; if(bs.p) bindP={...DEFAULT_PAD,...bs.p}; } } catch(e){}
@@ -6695,7 +6696,7 @@ function render() {
   // gather visible drawables (islands + ports + enemies + npcs + ship), sort back-to-front by world Y
   const drawables = [], seenIsl = new Set();
   for (let cy=c0y;cy<=c1y;cy++) for (let cx=c0x;cx<=c1x;cx++)
-    for (const isl of genChunk(cx,cy).islands){ if (seenIsl.has(isl)) continue; seenIsl.add(isl); drawables.push({ y: isl.y, kind: 'isl', obj: isl }); }   // continents span many chunks — draw once
+    for (const isl of genChunk(cx,cy).islands){ if (seenIsl.has(isl)) continue; seenIsl.add(isl); drawables.push({ y: isl.y - isl.r*0.85, kind: 'isl', obj: isl }); }   // sort by NORTH reach — coast-pressed boats stay visible (v0.22.2); continents span many chunks — draw once
   for (const e of enemies) drawables.push({ y: e.y, kind: 'enemy', obj: e });
   for (const n of npcs) drawables.push({ y: n.y, kind: 'npc', obj: n });
   for (const b of bergs) drawables.push({ y: b.y, kind: 'berg', obj: b });
@@ -6749,7 +6750,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.22.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.22.2';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
