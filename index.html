@@ -324,6 +324,10 @@ function genChunk(cx, cy) {
   }
   c = { islands, grounds, flotsam, reefs, flows };
   chunkCache.set(key, c);
+  if (chunkCache.size > 3200){                                 // evict oldest — coords are continuous, so laps leak strips (v0.19.4)
+    const it = chunkCache.keys();                              // cap sits ABOVE the max chart sweep (49x49) so the chart never thrashes it
+    for (let i=0;i<400;i++) chunkCache.delete(it.next().value);
+  }
   return c;
 }
 function flowAt(wx, wy){
@@ -1922,7 +1926,8 @@ function drawWater() {
   const mX = (BW/2)/VIEW * 0.18, mY = (BH/2)/(VIEW*ISO_Y) * 0.18;
   const worldL = cam.x-(BW/2)/VIEW-mX, worldR = cam.x+(BW/2)/VIEW+mX;
   const worldT = cam.y-(BH/2)/(VIEW*ISO_Y)-mY, worldB = cam.y+(BH/2)/(VIEW*ISO_Y)+mY;
-  const img = rctx.createImageData(GW, GH), d = img.data;
+  if (!drawWater._img) drawWater._img = rctx.createImageData(GW, GH);   // reused — per-frame allocs churn the GC (v0.19.4)
+  const img = drawWater._img, d = img.data;
   for (let gy=0; gy<GH; gy++) for (let gx=0; gx<GW; gx++){
     const wx = lerp(worldL, worldR, (gx+0.5)/GW), wy = lerp(worldT, worldB, (gy+0.5)/GH);
     const rt = REGIONS[regionAt(wx, wy)].tint;
@@ -3127,7 +3132,8 @@ function drawLocalChart(mx,my,size,open){
     if (!drawLocalChart._rgba){ drawLocalChart._rgba={}; for (const k in REGION_COL){ const v=REGION_COL[k];
       drawLocalChart._rgba[k] = v ? v.match(/[\d.]+/g).map((n,i)=>i<3?+n:Math.round(+n*255)) : null; } }
     if (!drawLocalChart._sm){ const s3=document.createElement('canvas'); s3.width=gN; s3.height=gN; drawLocalChart._sm=s3; }
-    const sm=drawLocalChart._sm, sc3=sm.getContext('2d'), img=sc3.createImageData(gN,gN), d=img.data;
+    if (!drawLocalChart._img) drawLocalChart._img = drawLocalChart._sm.getContext('2d').createImageData(gN,gN);
+    const sm=drawLocalChart._sm, sc3=sm.getContext('2d'), img=drawLocalChart._img, d=img.data;
     for (let gy=0;gy<gN;gy++) for (let gx=0;gx<gN;gx++){
       const wx=ship.x+((gx+0.5)/gN-0.5)*range, wy=ship.y+((gy+0.5)/gN-0.5)*range;
       const rc=drawLocalChart._rgba[regionAt(wx,wy)]; if (!rc) continue;
@@ -3137,7 +3143,7 @@ function drawLocalChart(mx,my,size,open){
     sc3.putImageData(img,0,0);
     ctx.imageSmoothingEnabled=true; ctx.drawImage(sm, mx,my,size,size); ctx.imageSmoothingEnabled=false;
   }
-  const cr=Math.ceil(range/CHUNK)+1, ccx=Math.floor(ship.x/CHUNK), ccy=Math.floor(ship.y/CHUNK), seen=new Set();
+  const cr=Math.min(24, Math.ceil(range/CHUNK)+1), ccx=Math.floor(ship.x/CHUNK), ccy=Math.floor(ship.y/CHUNK), seen=new Set();   // capped — the world chart covers the far view (v0.19.4)
   for (const s of storms){                                             // squalls chart live — you can see them coming
     const ix=ctr.x+(s.x-ship.x)*scale, iy=ctr.y+(s.y-ship.y)*scale, rr=Math.max(3, s.r*scale);
     ctx.fillStyle='rgba(38,50,68,0.5)'; ctx.beginPath(); ctx.arc(ix,iy,rr,0,TAU); ctx.fill();
@@ -3206,6 +3212,8 @@ function drawLocalChart(mx,my,size,open){
         if (known){ ctx.strokeStyle='rgba(233,214,170,0.35)'; ctx.lineWidth=1; ctx.stroke(); }
       } else { ctx.beginPath(); ctx.arc(ix,iy,Math.max(1.6,rpx*0.8),0,TAU); ctx.fill(); }
       if (isl.port && known){ ctx.fillStyle=FACTIONS[portFaction(isl)].col; ctx.beginPath(); ctx.arc(ix,iy,2.5,0,TAU); ctx.fill();
+        if (mapFilter.factions && open){ ctx.font=fntS(7); ctx.textAlign='left'; ctx.fillStyle='rgba(233,222,198,0.9)';
+          ctx.fillText(FACTIONS[portFaction(isl)].name[0], ix+4, iy-4); }   // hue isn't the only signal (v0.19.4)
         if (mapFilter.factions && open){                               // soft harbour-reach glow, not a ring tangle
           ctx.fillStyle=FACTIONS[portFaction(isl)].col; ctx.globalAlpha=0.10;
           ctx.beginPath(); ctx.arc(ix,iy,Math.max(6,1700*scale),0,TAU); ctx.fill(); ctx.globalAlpha=1; }
@@ -3645,6 +3653,7 @@ function drawActionBar(){
       roundRect(sx+4.5,sy+4.5,sz-9,sz-9,4); ctx.stroke(); }
     actionIcon(sl.icon, sx+sz/2, sy+sz/2-3, sz*0.26);
     if (sl.icon==='cannon' && player.ammoSel!=='round'){                  // loaded special ammo, top-left
+      ctx.fillStyle='rgba(10,16,24,0.78)'; roundRect(sx+4, sy+4, 28, 17, 4); ctx.fill();   // dark chip — the count sat raw on the gold glow (v0.19.4)
       drawAmmoIcon(player.ammoSel, sx+12, sy+13, 6.5);
       ctx.font=fnt(8); ctx.textAlign='left'; ctx.textBaseline='alphabetic';
       ctx.fillStyle=UICOL.hi; ctx.fillText(String(player.ammo[player.ammoSel]||0), sx+21, sy+17);
@@ -4290,7 +4299,7 @@ function drawMarketTab(isl, ax, ay, aw){
       drawAmmoIcon(id, x+33, ty+18, 10);
       const own = player.ammo[id]||0;
       if (own > 0){ ctx.textAlign='right'; ctx.font=fnt(9); ctx.fillStyle='#ffd98a'; ctx.fillText(String(own), x+48, ty+26); }
-      portButtons.push(mkBtn(x, ty+40, 66, 22, (AMMO[id].cost*5)+'c', ()=>buyAmmo(id)));
+      portButtons.push(mkBtn(x, ty+40, 66, 22, '+5 · '+(AMMO[id].cost*5)+'c', ()=>buyAmmo(id)));
     });
     ctx.textAlign='left';
   }
@@ -4692,7 +4701,7 @@ function drawInvContent(ax, ay, aw, btns, inPort){
     ctx.fillStyle = have ? UICOL.hi : 'rgba(233,222,198,0.4)'; ctx.fillText(capTxt, sx+asz-8, sy+asz-8);
     ctx.textAlign='left'; ctx.textBaseline='top';
     btns.push({ x:sx, y:sy, w:asz, h:asz, action:(k=>()=>selectAmmo(k))(id), noDraw:true });
-    if (inPort && id!=='round') btns.push(mkBtn(sx, sy+asz+4, asz, 20, (AMMO[id].cost*5)+'c', (k=>()=>buyAmmo(k))(id)));
+    if (inPort && id!=='round') btns.push(mkBtn(sx, sy+asz+4, asz, 20, '+5 · '+(AMMO[id].cost*5)+'c', (k=>()=>buyAmmo(k))(id)));
   }
   const dy2 = ayy+22+asz+(inPort?32:8);
   const selA = AMMO[player.ammoSel];
@@ -4766,7 +4775,7 @@ function drawHold(){
     });
     const lbl = player.banner ? 'Rename banner' : 'Raise your banner', w2 = btnW(lbl,11,10);
     holdButtons.push(mkBtn(px+48+SWATCHES.length*30+14, by-6, w2, 30, lbl, ()=>{ ui.naming = { text: player.banner ? player.banner.name : 'The '+player.boatName+' Banner', kind:'faction' }; clearKeys(); })); }
-  { const w = btnW('Set sail  (Esc)',11,10), b = mkBtn(px+pw-48-w, py+ph-56, w, 32, 'Set sail  (Esc)', ()=>{ ui.hold=false; clearKeys(); });
+  { const w = btnW('Back to the helm  (Esc)',11,10), b = mkBtn(px+pw-48-w, py+ph-56, w, 32, 'Back to the helm  (Esc)', ()=>{ ui.hold=false; clearKeys(); });
     holdButtons.push(b); }
   for (const b of holdButtons){ if (!b.noDraw) drawBtn(b); }
   ctx.restore();
@@ -5092,7 +5101,7 @@ function killEnemy(e, src='player'){
     setToast('Angler slain!  — spoils adrift');
   } else if (e.jelly){
     lootSpill(e.x, e.y, 45 + (Math.random()*50|0), { oil: 1+(Math.random()*2|0) });
-    player.stats.slainMonsters++;
+    player.stats.slainMonsters++; addBounty('serpent');       // blooms count toward monster bounties too (v0.19.4)
     setToast('Jelly bloom dispersed!  — oil adrift');
   } else {
     const g = {}; g[Math.random()<0.5?'oil':'scales'] = 1+(Math.random()*2|0);
@@ -6466,7 +6475,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.19.3';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.19.4';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6486,16 +6495,18 @@ function saveGame() {
     version: GAME_VERSION, savedAt: Date.now(),
     x:ship.x, y:ship.y, heading:ship.heading, sail:ship.sail, hp:ship.hp, t:timeOfDay.t, elapsed:world.elapsed,
     coin:player.coin, cargo:player.cargo, lastPort:player.lastPort||null,
-    up:player.up, lantern:player.lantern, contracts:player.contracts, stats:player.stats, visited:player.visited.slice(-200),
+    up:player.up, lantern:player.lantern, contracts:player.contracts, stats:player.stats, visited:player.visited.slice(-1200),
     crew:player.crew, cosmetic:player.cosmetic, cosUnlocked:player.cosUnlocked, quest:player.quest, hasHeart:player.hasHeart,
-    shipClass:player.shipClass, shipsOwned:player.shipsOwned, boatName:player.boatName, loreFound:player.loreFound, flotsamTaken:player.flotsamTaken.slice(-250),
+    shipClass:player.shipClass, shipsOwned:player.shipsOwned, boatName:player.boatName, loreFound:player.loreFound, flotsamTaken:player.flotsamTaken.slice(-1500),
     ammo:player.ammo, ammoSel:player.ammoSel, ledger:player.ledger, rep:player.rep,
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
     forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0]),
     fleet: player.fleet, hold: player.hold, vault: player.vault,
     banner: player.banner||null, truce: player.truce||0, pact: !!player.pact, bossCd: player.bossCd||0, bossCds: player.bossCds||{},
+    wx: weather.base, wseq: weather.seq, wtimer: Math.round(weather.timer), wstorm: weather.state==='storm' ? 1 : 0,
+    war: war ? { x: Math.round(war.x), y: Math.round(war.y), r: war.r, t: Math.round(war.t) } : null,
     notoriety:player.notoriety, bounty:player.bounty, journeys:player.journeys, achievements:player.achievements, sighted:player.sighted,
-    explored: Array.from(explored).slice(-400) })); } catch(e){}
+    explored: Array.from(explored).slice(-3000) })); } catch(e){}   // raised — trimming regressed charted reefs/flows on long voyages (v0.19.4)
 }
 function loadGame() {
   try {
@@ -6522,6 +6533,9 @@ function loadGame() {
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
     player.hold = s.hold || null; player.vault = s.vault || {};
     player.banner = s.banner || null; player.truce = s.truce || 0; player.pact = !!s.pact; player.bossCd = s.bossCd || 0; player.bossCds = s.bossCds || {};
+    if (s.wx){ weather.base = s.wx; weather.state = s.wx; weather.seq = s.wseq||0; weather.timer = s.wtimer||20; }   // forecasts survive a reload (v0.19.4)
+    if (s.war && s.war.t > 0) war = { x:s.war.x, y:s.war.y, r:s.war.r, t:s.war.t, skirmishT:0.5 };
+    if (s.wstorm) setTimeout(() => { try { spawnStorm(ship.x + 600, ship.y - 300); } catch(err){} }, 800);   // saved mid-storm — the squall is still on you
     if (player.banner){ FACTIONS.you.name = player.banner.name; FACTIONS.you.adj = player.banner.name; FACTIONS.you.col = player.banner.col || FACTIONS.you.col; }
     player.loreFound = s.loreFound || []; player.flotsamTaken = s.flotsamTaken || [];
     player.notoriety = s.notoriety||0; player.bounty = s.bounty||0; player.journeys = s.journeys||{}; player.achievements = s.achievements||[]; player.sighted = s.sighted||[];
