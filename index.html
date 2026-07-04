@@ -796,12 +796,12 @@ function regionAt(x, y){
 const REGION_COL = { calm:'rgba(96,156,112,0.30)', temperate:null, tropic:'rgba(84,164,150,0.30)', cursed:'rgba(128,84,158,0.42)', ice:'rgba(150,182,212,0.34)', desert:'rgba(196,164,92,0.30)', sargasso:'rgba(96,148,68,0.40)', toxic:'rgba(164,182,72,0.42)' };
 /* lesser terrors — every hazard sea has a named boss (the Cursed Deep keeps the
    Leviathan itself). Reuse the existing monster AIs, scaled up + named + leashed. */
-const REGION_BOSS = {   // terror hp ~doubled v0.18.7 — a stock sloop solo'd the Reefjaw
-  ice:      { kind:'kraken',  name:'the Rimehold Kraken', hp:680, sc:1.5,  purse:220, loot:{scales:2, ivory:1} },
-  sargasso: { kind:'kraken',  name:'the Kelpfather',      hp:620, sc:1.4,  purse:200, loot:{scales:2, ambergris:1} },
-  toxic:    { kind:'jelly',   name:'the Blightmother',    hp:540, sc:1.9,  purse:180, loot:{dye:2, oil:1} },
-  desert:   { kind:'serpent', name:'the Sunspine Wyrm',   hp:600, sc:1.7,  purse:200, loot:{scales:3, obsidian:1} },
-  tropic:   { kind:'deepmaw', name:'the Reefjaw',         hp:540, sc:1.6,  purse:180, loot:{scales:2, jade:1} },
+const REGION_BOSS = {   // terror hp calibrated vs ENDGAME dps (v0.19.0 — a maxed frigate melted 540hp in 3s); pressure dives break the burst
+  ice:      { kind:'kraken',  name:'the Rimehold Kraken', hp:1200, sc:1.5,  purse:220, loot:{scales:2, ivory:1} },
+  sargasso: { kind:'kraken',  name:'the Kelpfather',      hp:1100, sc:1.4,  purse:200, loot:{scales:2, ambergris:1} },
+  toxic:    { kind:'jelly',   name:'the Blightmother',    hp:950,  sc:1.9,  purse:180, loot:{dye:2, oil:1} },
+  desert:   { kind:'serpent', name:'the Sunspine Wyrm',   hp:1050, sc:1.7,  purse:200, loot:{scales:3, obsidian:1} },
+  tropic:   { kind:'deepmaw', name:'the Reefjaw',         hp:900,  sc:1.6,  purse:180, loot:{scales:2, jade:1} },
 };
 function bossCdAt(r){ return (player.bossCds||{})[r] || 0; }
 function bossRest(r, s){ (player.bossCds = player.bossCds || {})[r] = world.elapsed + s; }
@@ -1142,12 +1142,12 @@ function finishQuest(){
 }
 
 /* boss leviathan */
-let bossT = 8, bossArmedFor = null;
+let bossT = 8, bossArmedFor = null, bossWarnT = 0, bossWarned = false;
 function spawnBoss(){
   if (enemies.some(e=>e.boss)) return;
   const a = Math.random()*TAU, dist = (BH/2)/(VIEW*ISO_Y)*1.1 + 120;
   enemies.push({ type:'leviathan', boss:true, x:ship.x+Math.cos(a)*dist, y:ship.y+Math.sin(a)*dist, vx:0, vy:0, heading:a+Math.PI,
-    hp:600, maxhp:600, r:56, phase:1, timer:2.5, fireT:3, tentacles:[], trail:[], hitT:0, orbit:(Math.random()<0.5?1:-1) });
+    hp:1300, maxhp:1300, r:56, phase:1, timer:2.5, fireT:3, tentacles:[], trail:[], hitT:0, orbit:(Math.random()<0.5?1:-1) });
   setToast('The sea churns… a Leviathan rises!');
   SFX.leviathanRise();
 }
@@ -1156,6 +1156,7 @@ function spawnMiniBoss(rk){
   const e = spawnEnemy(def.kind); if (!e) return;
   e.miniboss = true; e.mb = def; e.homeRegion = rk; e.sc = def.sc;
   e.hp = e.maxhp = def.hp; e.r = Math.round(e.r * def.sc);   // hit radius grows with the body
+  e.aoeT = 6; e.fireT = 5;                                   // it rises roaring, not swinging — time to make sail (v0.19.0)
   setToast('The water stirs — ' + def.name + ' rises!');
   SFX.roar(def.kind, 0.9);
   return e;
@@ -1179,6 +1180,20 @@ function stepBoss(e, dt){
     return;
   }
   e.leashT = 0;
+  // pressure dive — at 2/3 and 1/3 hull the leviathan sounds for a breath,
+  // shrugging off broadside bursts and re-angling (v0.19.0)
+  e.diveMk = e.diveMk || {};
+  for (const th of [0.66, 0.33]) if (!e.diveMk[th] && e.hp < e.maxhp*th){
+    e.diveMk[th] = true; e.diveT = 3; e.tentacles.length = 0;
+    setToast('The Leviathan sounds!'); SFX.splash(0.9); break;
+  }
+  if (e.diveT > 0){
+    e.diveT -= dt;
+    const fa = Math.atan2(ship.y-e.y, ship.x-e.x) + 1.1;
+    e.vx = lerp(e.vx, Math.cos(fa)*80, dt*2); e.vy = lerp(e.vy, Math.sin(fa)*80, dt*2);
+    e.x += e.vx*dt; e.y += e.vy*dt; e.heading = Math.atan2(e.vy, e.vx);
+    return;
+  }
   const dx = ship.x-e.x, dy = ship.y-e.y, dist = Math.hypot(dx,dy)||1, ang = Math.atan2(dy,dx);
   const hpF = e.hp/e.maxhp; e.phase = hpF>0.66?1:hpF>0.33?2:3;
   const tang = ang + e.orbit*Math.PI/2; let mvx = Math.cos(tang), mvy = Math.sin(tang);
@@ -3724,6 +3739,13 @@ function drawHUD() {
     ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*6) > 0.5 ? '#e8916b' : 'rgba(232,145,107,0.55)';
     ctx.fillText(ship.shoal.kind==='sandbar' ? '⚠ sandbar! — hard aground at speed' : '⚠ shoal water — ease your sail', W/2, wgn ? 66 : 40); ctx.restore();
   }
+  // terror rise telegraph — the deep gives fair warning now (v0.19.0)
+  if (bossWarnT > 0 && !ui.port && !ship.sinking){
+    const by2 = 40 + (wgn ? 26 : 0) + (ship.shoal && ship.speed > 55 ? 26 : 0);
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font=fnt(12);
+    ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*8) > 0.5 ? '#d078e8' : 'rgba(208,120,232,0.55)';
+    ctx.fillText('⚠ the water trembles — something vast rises. Make sail!', W/2, by2); ctx.restore();
+  }
 
   // (coin / hold / ship name AND the region strip live in the always-on-top
   //  status widget — drawStatusWidget; the region strip rides on top of the pills)
@@ -4893,7 +4915,7 @@ function stepShots(dt){
     }
     if (s.friendly){
       let hitOne = false;
-      for (const e of enemies){ if (e.dead) continue; if (Math.hypot(e.x-s.x, e.y-s.y) < e.r){ hitEnemy(e, s.dmg); applyShotFx(e, s.kind, 'player'); s.t = -1; addFx(s.x,s.y,'hit'); hitOne = true; break; } }
+      for (const e of enemies){ if (e.dead || e.diveT > 0) continue; if (Math.hypot(e.x-s.x, e.y-s.y) < e.r){ hitEnemy(e, s.dmg); applyShotFx(e, s.kind, 'player'); s.t = -1; addFx(s.x,s.y,'hit'); hitOne = true; break; } }
       if (!hitOne && !s.escort) for (const n of npcs){ if (n.dead) continue; if (Math.hypot(n.x-s.x, n.y-s.y) < n.r){ hitNpc(n, s.dmg); applyShotFx(n, s.kind, 'player'); s.t = -1; addFx(s.x,s.y,'hit'); hitOne = true; break; } }
       if (!hitOne && !s.escort && s.t > 0) for (const nf of nearForts){    // siege — your iron against their stone
         if (nf.st.hp <= 0) continue;
@@ -4976,6 +4998,8 @@ function killEnemy(e, src='player'){
   else if (e.ship) sfxWorld(e.x, e.y, v => SFX.sinkEnemy(v), 0.8, 550);
   else sfxWorld(e.x, e.y, v => SFX.monsterDeath(v), 0.8, 550);
   if (src !== 'player'){                       // sunk by another power — the spoils still spill for anyone
+    if (e.boss) player.bossCd = world.elapsed + 420;                 // even a rival kill grants the sea its rest (v0.19.0)
+    else if (e.miniboss) bossRest(e.homeRegion, 420);
     const g = {}; if (e.ship && Math.random()<0.6) g[Math.random()<0.5?'rum':'cloth'] = 1;
     lootSpill(e.x, e.y, 15 + (Math.random()*25|0), g);
     if (Math.hypot(e.x-ship.x, e.y-ship.y) < 1400) setToast((e.ship?'A pirate ship':'A beast')+' goes down under '+(FACTIONS[src]?FACTIONS[src].adj:'rival')+' guns');
@@ -5030,14 +5054,19 @@ function killEnemy(e, src='player'){
     setToast((e.type==='deepmaw'?'Deepmaw':'Leviathan')+' slain!  — spoils adrift');
   }
 }
-function enemyFireA(e, a, vsPlayer=true){
+function enemyFireA(e, a, vsPlayer=true, range){
   if (graceT>0 && vsPlayer) return;                    // grace shields the player, not rival fleets
   // fights read differently per opponent: the navy shreds rigging, pirate heavies throw fire
   let kind = 'round';
   if ((e.type==='warship'||e.type==='manowar'||e.type==='patrol') && Math.random()<0.25) kind='chain';
   else if ((e.type==='dread'||e.type==='galleon'||e.type==='corsair') && Math.random()<0.16) kind='fire';
   const base = e.miniboss ? 24 : (e.type==='warship'||e.type==='galleon'||e.type==='manowar'||e.type==='dread'?20:15);   // enemy iron bites now (difficulty pass v0.16; terror spew v0.18.7)
-  shots.push({ x:e.x, y:e.y, z:8, vx:Math.cos(a)*300, vy:Math.sin(a)*300, vz:66, t:1.9,
+  // loft the ball to LAND at the target — the old fixed vz splashed at ~296u while
+  // the dread's own fireRange is 440, so the big hulls shelled the sea short of
+  // every fight they picked (v0.19.0)
+  const d = clamp(range !== undefined ? range : Math.hypot(ship.x-e.x, ship.y-e.y), 90, 460);
+  const tf = d/300, vz = 75*tf - 8/tf;
+  shots.push({ x:e.x, y:e.y, z:8, vx:Math.cos(a)*300, vy:Math.sin(a)*300, vz, t:tf+0.25,
     dmg:Math.round(base*(kind==='chain'?0.55:kind==='fire'?0.8:1)), friendly:false, ghost:e.ghost, kind,
     fac: e.fac || 'redsails', vsPlayer, src: e });
 }
@@ -5060,6 +5089,7 @@ function pickEnemyType(region){
   return 'pirate';
 }
 function stepEnemies(dt){
+  bossWarnT = 0;
   spawnT -= dt;
   if (spawnT <= 0 && enemies.length < ENEMY_CAP && !ship.sinking && graceT <= 0){
     const region = REGIONS[regionAt(ship.x, ship.y)];
@@ -5081,6 +5111,9 @@ function stepEnemies(dt){
       }
     } else if (REGION_BOSS[curRegion] && world.elapsed >= bossCdAt(curRegion)){
       bossT -= dt;
+      bossWarnT = (bossT > 0 && bossT < 10) ? bossT : 0;      // the sea telegraphs the rise (v0.19.0)
+      if (bossWarnT && !bossWarned){ bossWarned = true; setToast('⚠ The water trembles — something vast stirs beneath!'); }
+      if (bossT >= 10) bossWarned = false;
       if (!nearbyDock() && bossT<=0) bossT = spawnMiniBoss(curRegion) ? 30 : 3;   // land under the spawn roll → retry soon
     }
   }
@@ -5093,6 +5126,20 @@ function stepEnemies(dt){
         if (e.leashT > 6){ e.dead = true; bossRest(e.homeRegion, 420);
           setToast(e.mb.name + ' sinks back into its waters'); continue; }
       } else e.leashT = 0;
+      // pressure dive — at 2/3 and 1/3 hull the terror sounds, shrugging off the
+      // burst and resurfacing off your quarter (breaks maxed-broadside melts, v0.19.0)
+      e.diveMk = e.diveMk || {};
+      for (const th of [0.66, 0.33]) if (!e.diveMk[th] && e.hp < e.maxhp*th){
+        e.diveMk[th] = true; e.diveT = 3; if (e.aoes) e.aoes.length = 0;
+        addFx(e.x, e.y, 'burst'); setToast(e.mb.name + ' sounds beneath the swell!'); SFX.splash(0.8); break;
+      }
+      if (e.diveT > 0){
+        e.diveT -= dt;
+        const fa = Math.atan2(ship.y-e.y, ship.x-e.x) + 1.1;
+        e.vx = lerp(e.vx, Math.cos(fa)*95, dt*2); e.vy = lerp(e.vy, Math.sin(fa)*95, dt*2);
+        e.x += e.vx*dt; e.y += e.vy*dt; e.heading = Math.atan2(e.vy, e.vx);
+        continue;
+      }
       // eruption barrage — telegraphed bursts at the helm: one where you ARE, one
       // where you're GOING; below 40% hp the terror enrages — faster cadence and
       // a third burst on your half-lead, so straight-line kiting stops working
@@ -5104,6 +5151,9 @@ function stepEnemies(dt){
         e.aoes.push({ x: ship.x, y: ship.y, t: 1.1 });
         e.aoes.push({ x: ship.x + ship.vx*0.95, y: ship.y + ship.vy*0.95, t: 1.35 });
         if (enraged) e.aoes.push({ x: ship.x + ship.vx*0.5, y: ship.y + ship.vy*0.5, t: 1.22 });
+        let escT = null, escD = 750;                           // your gunboats are fair game too (v0.19.0)
+        for (const esc of escorts){ const d2 = Math.hypot(e.x-esc.x, e.y-esc.y); if (d2 < escD){ escD = d2; escT = esc; } }
+        if (escT) e.aoes.push({ x: escT.x + escT.vx*0.6, y: escT.y + escT.vy*0.6, t: 1.25 });
         SFX.roar(e.mb.kind, enraged ? 0.6 : 0.45);             // the growl is the warning
       }
       for (const a2 of e.aoes){
@@ -5111,6 +5161,7 @@ function stepEnemies(dt){
         if (!a2.struck && a2.t <= 0){
           a2.struck = true; addFx(a2.x, a2.y, 'burst'); SFX.tentacle(0.55);
           if (Math.hypot(a2.x-ship.x, a2.y-ship.y) < 95 && !ship.sinking){ damagePlayer(24); addShake(5); }
+          for (const esc of escorts) if (Math.hypot(a2.x-esc.x, a2.y-esc.y) < 95) damageEscort(esc, 24);
         }
       }
       e.aoes = e.aoes.filter(a2 => a2.t > -0.3);
@@ -5166,7 +5217,7 @@ function stepEnemies(dt){
       if (e.volley > 0 && !standoff){ e.fireT -= dt; if (e.fireT <= 0 && tdist < e.fireRange && (q || !ship.sinking)){ e.fireT = e.reload;
         const lead = tdist/300;                              // lead a moving quarry by its drift over the shot's flight
         const la = q ? Math.atan2(q.y + q.vy*lead - e.y, q.x + q.vx*lead - e.x) : tang;
-        for (let i=0;i<e.volley;i++) enemyFireA(e, la + (i-(e.volley-1)/2)*0.12, !q); } }
+        for (let i=0;i<e.volley;i++) enemyFireA(e, la + (i-(e.volley-1)/2)*0.12, !q, tdist); } }
     } else if (e.ranged){
       e.trail.unshift({ x:e.x, y:e.y }); if (e.trail.length > 24) e.trail.pop();
       let mvx, mvy;
@@ -5175,7 +5226,7 @@ function stepEnemies(dt){
       else { mvx = Math.cos(tang+Math.PI/2); mvy = Math.sin(tang+Math.PI/2); }
       [mvx, mvy] = steerClear(e, mvx, mvy);
       e.vx = lerp(e.vx, mvx*72, dt*1.2); e.vy = lerp(e.vy, mvy*72, dt*1.2); e.surf = lerp(e.surf, 1, dt*2); e.heading = tang;
-      e.fireT -= dt; if (e.fireT <= 0 && tdist < 380 && (q || !ship.sinking)){ e.fireT = e.miniboss ? 1.3 : 1.9; enemyFireA(e, tang, !q);
+      e.fireT -= dt; if (e.fireT <= 0 && tdist < 380 && (q || !ship.sinking)){ e.fireT = e.miniboss ? 1.3 : 1.9; enemyFireA(e, tang, !q, tdist);
         if (world.elapsed - (e.roarT||0) > 5 && Math.hypot(e.x-ship.x, e.y-ship.y) < 600){ e.roarT = world.elapsed; SFX.roar('deepmaw', 0.6); } }   // a telegraph is only useful if the beast is close enough to matter
     } else if (e.kraken){
       e.timer -= dt;
@@ -5480,14 +5531,17 @@ function drawEnemy(e){
       const p2 = proj(a2.x, a2.y, 0);
       const al = 0.3 + 0.5*(1 - Math.max(0, a2.t)/1.35) + 0.15*Math.abs(Math.sin(world.elapsed*14));
       bctx.strokeStyle = `rgba(220,64,92,${Math.min(0.95, al)})`; bctx.lineWidth = 2;
-      bctx.beginPath(); bctx.ellipse(p2[0], p2[1], 80*VIEW, 80*VIEW*ISO_Y, 0, 0, TAU); bctx.stroke();
+      bctx.beginPath(); bctx.ellipse(p2[0], p2[1], 95*VIEW, 95*VIEW*ISO_Y, 0, 0, TAU); bctx.stroke();
     }
   }
+  const diving = e.diveT > 0;                                   // sounded beasts are a shadow under the swell (v0.19.0)
+  if (diving){ bctx.save(); bctx.globalAlpha = 0.32; }
   if (e.miniboss && e.sc > 1){                                  // scale the whole draw about the body — boss-sized for free
     const p = proj(e.x, e.y, 0);
     bctx.save(); bctx.translate(p[0], p[1]); bctx.scale(e.sc, e.sc); bctx.translate(-p[0], -p[1]);
     drawEnemyInner(e); bctx.restore();
   } else drawEnemyInner(e);
+  if (diving) bctx.restore();
 }
 function drawShots(){
   for (const s of shots){
@@ -5980,7 +6034,7 @@ function stepNpcs(dt){
       let mvx,mvy; if (pdist>240){ mvx=Math.cos(pang); mvy=Math.sin(pang); } else { mvx=Math.cos(pang+Math.PI/2); mvy=Math.sin(pang+Math.PI/2); if(pdist<170){mvx-=Math.cos(pang)*0.7;mvy-=Math.sin(pang)*0.7;} }
       [mvx,mvy] = steerClear(n, mvx, mvy);
       n.vx=lerp(n.vx,mvx*(n.navy?72:64)*nSlow,dt*1.5); n.vy=lerp(n.vy,mvy*(n.navy?72:64)*nSlow,dt*1.5); n.heading=Math.atan2(n.vy,n.vx);
-      n.fireT-=dt; if (n.fireT<=0 && pdist<340 && !ship.sinking){ n.fireT=n.navy?2.2:2.9; const vol=n.volley||1; for(let i=0;i<vol;i++) enemyFireA(n, pang+(i-(vol-1)/2)*0.12); }
+      n.fireT-=dt; if (n.fireT<=0 && pdist<340 && !ship.sinking){ n.fireT=n.navy?2.2:2.9; const vol=n.volley||1; for(let i=0;i<vol;i++) enemyFireA(n, pang+(i-(vol-1)/2)*0.12, true, pdist); }
     } else {
       let engaged = false;
       n.foeT = (n.foeT||0) - dt;
@@ -6012,7 +6066,7 @@ function stepNpcs(dt){
           n.fireT -= dt;
           if (n.fireT <= 0 && pd < 340){ n.fireT = n.navy ? 2.4 : n.type==='trader' ? 3.0 : 3.6;   // civilian guns are slower
             const lead = pd/300, la = Math.atan2(foe.y + foe.vy*lead - n.y, foe.x + foe.vx*lead - n.x);
-            const vol = n.volley||1; for (let i=0;i<vol;i++) enemyFireA(n, la+(i-(vol-1)/2)*0.12, false); }
+            const vol = n.volley||1; for (let i=0;i<vol;i++) enemyFireA(n, la+(i-(vol-1)/2)*0.12, false, pd); }
         }
       }
       if (!engaged){
@@ -6348,7 +6402,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.9';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.19.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
