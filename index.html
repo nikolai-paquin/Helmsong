@@ -63,6 +63,7 @@
     <span><b>L</b></span><span>light / douse lantern (see at night)</span>
     <span><b>Space</b></span><span>cast net / dock at port</span>
     <span><b>Click</b></span><span>fire cannon (aim w/ mouse)</span>
+    <span><b>R</b></span><span>swap cannon ammo</span>
     <span><b>M</b></span><span>toggle map</span>
     <span><b>I</b></span><span>captain's screens (hold · ledger · log)</span>
     <span><b>Esc</b></span><span>menu / pause</span>
@@ -654,6 +655,16 @@ const AMMO_ORDER = Object.keys(AMMO);
 function selectAmmo(id){
   if (id!=='round' && !(player.ammo[id]>0)){ setToast('No '+AMMO[id].name+' aboard — buy some at a port'); return; }
   player.ammoSel = id; SFX.click ? SFX.click() : 0;
+}
+// quick swap at the helm (bindable key + the action-bar cannon slot) — cycles
+// round + whatever specials are actually aboard, in rack order
+function cycleAmmo(){
+  const list = AMMO_ORDER.filter(id => id === 'round' || (player.ammo[id]||0) > 0);
+  if (list.length === 1){ setToast('Only round shot aboard — harbours sell crates of special ammo'); return; }
+  player.ammoSel = list[(list.indexOf(player.ammoSel) + 1) % list.length];
+  const a = AMMO[player.ammoSel];
+  setToast('Loaded: ' + a.name + (player.ammoSel === 'round' ? '' : ' ×' + player.ammo[player.ammoSel]));
+  SFX.click();
 }
 
 /* ====================== V13: culture kits ================================= */
@@ -1634,6 +1645,7 @@ window.addEventListener('keydown', e => {
   if (k === bindK.action && world.running) handleAction();
   if (k === bindK.mute) toggleMute();
   if (k === bindK.lantern && world.running) toggleLantern();
+  if (k === bindK.ammo && world.running && !ship.sinking) cycleAmmo();
   if (k === 'o' && world.running){ ui.settings = true; clearKeys(); }
   if (k === 'escape'){ if (ui.inv) ui.inv = false; else if (ui.port) closePort(); else if (ui.mapOpen) ui.mapOpen = false; else if (ui.hold) ui.hold = false; else { ui.paused = !ui.paused; ui.pauseConfirm = false; } clearKeys(); }
 });
@@ -3357,19 +3369,19 @@ function drawSettings(){
     const mkRow = (label, cur, type, action, ry2) => {
       ctx.textAlign='left'; ctx.font=fnt(12); ctx.fillStyle='#e9dec6'; ctx.fillText(label, px+48, ry2+4);
       const listening = ui.rebind && ui.rebind.type===type && ui.rebind.action===action;
-      const b={ x:px+pw-48-172, y:ry2, w:172, h:26, type, action };
+      const b={ x:px+pw-48-172, y:ry2, w:172, h:24, type, action };
       brassButton(b.x,b.y,b.w,b.h, listening?(type==='key'?'press a key…':'press a button…'):cur, { hov:hit(b), active:listening, font:fnt(11) });
       ctx.textBaseline='top';
       settingsButtons.push(b);
     };
-    ry=py+108;
+    ry=py+104;   // 11 keyboard rows since the ammo bind — pitch trimmed 26→25 to clear the footer
     ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('KEYBOARD', px+48, ry); ry+=22;
-    for (const [a,label] of [['up','Sail up'],['down','Reef sail'],['left','Turn left'],['right','Turn right'],['anchor','Anchor'],['action','Action / dock'],['lantern','Lantern'],['map','Map'],['inv','Hold / inventory'],['mute','Mute']]){
-      mkRow(label, (bindK[a]===' '?'space':bindK[a]).toUpperCase(), 'key', a, ry); ry+=26;
+    for (const [a,label] of [['up','Sail up'],['down','Reef sail'],['left','Turn left'],['right','Turn right'],['anchor','Anchor'],['action','Action / dock'],['lantern','Lantern'],['ammo','Swap ammo'],['map','Map'],['inv','Hold / inventory'],['mute','Mute']]){
+      mkRow(label, (bindK[a]===' '?'space':bindK[a]).toUpperCase(), 'key', a, ry); ry+=25;
     }
-    ry+=6; ctx.textAlign='left'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('GAMEPAD', px+48, ry); ry+=22;
+    ry+=4; ctx.textAlign='left'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('GAMEPAD', px+48, ry); ry+=22;
     for (const [a,label] of [['fire','Fire'],['action','Action'],['lantern','Lantern'],['map','Map'],['anchor','Anchor'],['mute','Mute']]){
-      mkRow(label, 'button '+bindP[a], 'pad', a, ry); ry+=26;
+      mkRow(label, 'button '+bindP[a], 'pad', a, ry); ry+=25;
     }
     { const w=btnW('Reset defaults',11,10); const rb={ x:px+48, y:py+ph-58, w, h:30, reset:true };
       brassButton(rb.x,rb.y,rb.w,rb.h,'Reset defaults',{ hov:hit(rb), active:hit(rb) }); settingsButtons.push(rb); }
@@ -3557,7 +3569,7 @@ function actionIcon(kind, cx, cy, s){
 }
 const ACTION_SLOTS = [
   { key:'action',  icon:'net',     act:()=>true,           click:()=>handleAction() },
-  { key:null,      icon:'cannon',  mouse:true, act:()=>false },                          // aim with the mouse — the slot itself swallows clicks
+  { key:'ammo',    icon:'cannon',  act:()=>player.ammoSel!=='round', click:()=>cycleAmmo() },   // click (or R) cycles the loaded shot; fire stays LMB on the water
   { key:'lantern', icon:'lantern', act:()=>lanternActive(),click:()=>toggleLantern() },
   { key:'anchor',  icon:'anchor',  act:()=>ship.anchor },                                // hold-key only — swallow
   { key:'map',     icon:'chart',   act:()=>ui.mapOpen,     click:()=>toggleMap() },
@@ -6213,7 +6225,7 @@ function checkAch(){ for (const a of ACHIEVEMENTS) if(!player.achievements.inclu
 function stepNotoriety(dt){ if(player.notoriety>0 && player.bounty<=0) player.notoriety=Math.max(0, player.notoriety-dt*0.4); if(player.notoriety>0 && player.bounty>0) player.notoriety=Math.max(20, player.notoriety-dt*0.1); }
 
 /* --- input bindings + settings --- */
-const DEFAULT_KEYS = { up:'w', down:'s', left:'a', right:'d', anchor:'shift', action:' ', map:'m', inv:'i', mute:'p', lantern:'l' };
+const DEFAULT_KEYS = { up:'w', down:'s', left:'a', right:'d', anchor:'shift', action:' ', map:'m', inv:'i', mute:'p', lantern:'l', ammo:'r' };
 const DEFAULT_PAD  = { fire:7, action:2, map:9, mute:3, anchor:1, zoomIn:5, zoomOut:4, lantern:0 };
 let bindK = {...DEFAULT_KEYS}, bindP = {...DEFAULT_PAD};
 function K(a){ return keys[bindK[a]]; }
@@ -6336,7 +6348,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.8';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.9';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
