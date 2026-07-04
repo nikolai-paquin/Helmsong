@@ -1148,7 +1148,7 @@ function spawnBoss(){
   const a = Math.random()*TAU, dist = (BH/2)/(VIEW*ISO_Y)*1.1 + 120;
   enemies.push({ type:'leviathan', boss:true, x:ship.x+Math.cos(a)*dist, y:ship.y+Math.sin(a)*dist, vx:0, vy:0, heading:a+Math.PI,
     hp:1300, maxhp:1300, r:56, phase:1, timer:2.5, fireT:3, tentacles:[], trail:[], hitT:0, orbit:(Math.random()<0.5?1:-1) });
-  setToast('The sea churns… a Leviathan rises!');
+  setToast('The sea churns… a Leviathan rises!', true);
   SFX.leviathanRise();
 }
 function spawnMiniBoss(rk){
@@ -1157,7 +1157,7 @@ function spawnMiniBoss(rk){
   e.miniboss = true; e.mb = def; e.homeRegion = rk; e.sc = def.sc;
   e.hp = e.maxhp = def.hp; e.r = Math.round(e.r * def.sc);   // hit radius grows with the body
   e.aoeT = 6; e.fireT = 5;                                   // it rises roaring, not swinging — time to make sail (v0.19.0)
-  setToast('The water stirs — ' + def.name + ' rises!');
+  setToast('The water stirs — ' + def.name + ' rises!', true);
   SFX.roar(def.kind, 0.9);
   return e;
 }
@@ -1830,10 +1830,16 @@ let LIGHT = [-0.62, -0.48]; { const l=Math.hypot(LIGHT[0],LIGHT[1]); LIGHT=[LIGH
 
 let envMul = 1, envGray = 0;
 let curWaters = null, watersT = -1, lastFlaggedWaters = null;
+let gateWarned = {};                                         // one entry warning per gated sea per session (v0.19.1)
 function computeEnv() {
   envMul = lerp(OPTS.brightNights ? 0.74 : 0.58, 1, dayFactor());   // brighter night floor so the sea stays legible (raisable in Settings)
   envGray = weather.state==='storm'?0.55:weather.state==='rain'?0.42:weather.state==='cloudy'?0.18:0;
+  const prevRegion = curRegion;
   curRegion = regionAt(ship.x, ship.y);
+  if (curRegion !== prevRegion && REGIONS[curRegion] && REGIONS[curRegion].gate && !(player.up[REGIONS[curRegion].gate.comp] > 0) && !gateWarned[curRegion] && world.elapsed > 5){
+    gateWarned[curRegion] = true;                             // warn BEFORE the drain teaches by punishment (v0.19.1)
+    setToast('⚠ ' + REGIONS[curRegion].name + ' gnaws at unfitted hulls — turn back or fit the ' + REGIONS[curRegion].gate.name + ' (Shipyard)', true);
+  }
   if (world.elapsed - watersT > 0.5){    // whose waters — throttled chunk scan
     watersT = world.elapsed;
     curWaters = homeWaters(ship.x, ship.y);
@@ -3080,7 +3086,7 @@ function drawMinimap() {
       }
     };
     const ly0 = my+size-fw-66;
-    swatchRow([['Calm','rgba(96,156,112,0.9)'],['Coral','rgba(84,164,150,0.9)'],['Desert','rgba(196,164,92,0.9)'],['Cursed','rgba(158,110,190,0.95)'],['Ice','rgba(150,182,212,0.9)'],['Sargasso','rgba(96,148,68,0.9)'],['Verdigris','rgba(164,182,72,0.9)']], ly0+8, 10);
+    swatchRow([['Calm','rgba(96,156,112,0.9)'],['Coral','rgba(84,164,150,0.9)'],['Desert','rgba(196,164,92,0.9)'],['Cursed ☠','rgba(158,110,190,0.95)'],['Ice ☠','rgba(150,182,212,0.9)'],['Sargasso ☠','rgba(96,148,68,0.9)'],['Verdigris ☠','rgba(164,182,72,0.9)']], ly0+8, 10);   // ☠ = hull-damaging without the refit
     if (mapFilter.factions){                                   // faction swatches when the overlay is up
       const facs = (player.banner ? FACTION_ORDER.concat(['you']) : FACTION_ORDER).map(f=>[f==='you'?'yours':FACTIONS[f].adj, FACTIONS[f].col]);
       swatchRow(facs, ly0+28, 10);
@@ -3472,7 +3478,7 @@ function drawNaming(){
   const blink = (world.elapsed*2|0)%2===0 ? '_' : ' ';
   ctx.fillStyle='#f4ead0'; ctx.font=fnt(20); ctx.fillText((ui.naming.kind==='faction' ? '' : 'the ') + ui.naming.text + blink, W/2, py+96);
   ctx.fillStyle='rgba(233,222,198,0.55)'; ctx.font=fntS(11);
-  ctx.fillText(ui.naming.first ? 'type a name · Enter to christen her' : 'type a name · Enter to christen · Esc to keep the old name', W/2, py+132);
+  ctx.fillText(ui.naming.first ? 'type a name · Enter or Esc to christen her · rename later at any Shipyard' : 'type a name · Enter to christen · Esc to keep the old name', W/2, py+132);
   const bw = btnW('Christen', 12, 14), b = mkBtn(W/2-bw/2, py+ph-58, bw, 34, 'Christen', christen, true);
   nameButtons.push(b); drawBtn(b);
   ctx.restore();
@@ -3480,7 +3486,7 @@ function drawNaming(){
 // keep an edge marker out of the top-left / top-right HUD panel columns
 function hudTopAvoid(x, y){
   const rightBot = 24 + (104 + forecast().length*22) + (player.contracts.length + (player.quest.done?0:1))*22 + 6;
-  const leftBot  = 158 + (player.bounty>0?36:0) + (player.hasHeart?36:0);   // strip 12–42, pills 50–154, WANTED/heart below
+  const leftBot  = 158 + (player.bounty>0?50:0) + (player.hasHeart?36:0);   // strip 12–42, pills 50–154, WANTED(44) /heart below
   if (x > W-262 && y < rightBot) return rightBot;
   if (x < 262   && y < leftBot)  return leftBot;
   return y;
@@ -3739,9 +3745,21 @@ function drawHUD() {
     ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*6) > 0.5 ? '#e8916b' : 'rgba(232,145,107,0.55)';
     ctx.fillText(ship.shoal.kind==='sandbar' ? '⚠ sandbar! — hard aground at speed' : '⚠ shoal water — ease your sail', W/2, wgn ? 66 : 40); ctx.restore();
   }
+  // fire aboard / whirlpool grind — name every drain (v0.19.1)
+  let bStack = 40 + (wgn ? 26 : 0) + (ship.shoal && ship.speed > 55 ? 26 : 0);
+  if (ship.burnT > 0 && !ui.port && !ship.sinking){
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font=fnt(12);
+    ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*6) > 0.5 ? '#e8916b' : 'rgba(232,145,107,0.55)';
+    ctx.fillText('⚠ fire aboard! — rain or time will douse it', W/2, bStack); ctx.restore(); bStack += 26;
+  }
+  if (ship.flow && ship.flow.kind==='whirl' && Math.hypot(ship.x-ship.flow.x, ship.y-ship.flow.y) < ship.flow.r*0.4 && !ui.port && !ship.sinking){
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font=fnt(12);
+    ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*6) > 0.5 ? '#e8916b' : 'rgba(232,145,107,0.55)';
+    ctx.fillText('⚠ the maw of the whirl! — sail across the spiral', W/2, bStack); ctx.restore(); bStack += 26;
+  }
   // terror rise telegraph — the deep gives fair warning now (v0.19.0)
   if (bossWarnT > 0 && !ui.port && !ship.sinking){
-    const by2 = 40 + (wgn ? 26 : 0) + (ship.shoal && ship.speed > 55 ? 26 : 0);
+    const by2 = bStack;
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font=fnt(12);
     ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*8) > 0.5 ? '#d078e8' : 'rgba(208,120,232,0.55)';
     ctx.fillText('⚠ the water trembles — something vast rises. Make sail!', W/2, by2); ctx.restore();
@@ -3753,10 +3771,12 @@ function drawHUD() {
   // WANTED — bounty on your head
   if (player.bounty > 0){
     ctx.save(); ctx.textBaseline='middle';
-    chromePanel(16, 158, 240, 30, {r:6,fw:3,tint:'rgba(150,38,38,0.6)'});
+    chromePanel(16, 158, 240, 44, {r:6,fw:3,tint:'rgba(150,38,38,0.6)'});
     const skulls = '☠'.repeat(clamp(Math.ceil(player.notoriety/25),1,4));
-    ctx.textAlign='left'; ctx.fillStyle='#f4b8a8'; ctx.font=fnt(11); ctx.fillText('WANTED '+skulls, 32, 174);
-    ctx.textAlign='right'; ctx.fillStyle='#ffd98a'; ctx.fillText(player.bounty+' coin', 242, 174); ctx.restore();
+    ctx.textAlign='left'; ctx.fillStyle='#f4b8a8'; ctx.font=fnt(11); ctx.fillText('WANTED '+skulls, 32, 172);
+    ctx.textAlign='right'; ctx.fillStyle='#ffd98a'; ctx.fillText(player.bounty+' coin', 242, 172);
+    ctx.textAlign='left'; ctx.font=fntS(8); ctx.fillStyle='rgba(244,184,168,0.75)';
+    ctx.fillText('pay it off at any Harbour · sinking pirates helps', 32, 190); ctx.restore();
   }
 
   // active contract tracker (top-right, below the weather panel)
@@ -3806,7 +3826,7 @@ function drawHUD() {
   // catch / loot / event toast (hidden under the open chart — it would peek out at the edges)
   if (fishing.toastT > 0 && !ui.port && !ui.mapOpen && !ui.paused) {
     ctx.save(); ctx.globalAlpha = clamp(fishing.toastT,0,1); ctx.textAlign='center';
-    ctx.fillStyle='#ffd98a'; ctx.font=fnt(19); ctx.fillText(fishing.toast, W/2, H-142-12-76); ctx.restore();
+    ctx.fillStyle = fishing.urgent ? '#f4907a' : '#ffd98a'; ctx.font=fnt(19); ctx.fillText(fishing.toast, W/2, H-142-12-76); ctx.restore();
   }
   // sunk overlay
   if (ship.sinking) {
@@ -3819,7 +3839,7 @@ function drawHUD() {
 
   // quest-item indicator
   if (player.hasHeart){
-    const hy = player.bounty>0 ? 194 : 158;
+    const hy = player.bounty>0 ? 208 : 158;   // WANTED strip grew to 44px for its how-to line (v0.19.1)
     ctx.save(); ctx.textBaseline='middle'; ctx.textAlign='left';
     chromePanel(16,hy,240,30,{r:6,fw:3,tint:'rgba(150,38,72,0.6)'});
     ctx.fillStyle='#f4b8c8'; ctx.font=fnt(11); ctx.fillText('♥ Leviathan’s Heart', 32, hy+16); ctx.restore();
@@ -3858,10 +3878,13 @@ function groundAt(x, y) {
 }
 const fishing = { active:false, prog:0, toast:'', toastT:0 };
 const toastQ = [];
-function setToast(t){
+function setToast(t, urgent){
   if (fishing.toast === t && fishing.toastT > 1.2) return;   // dedupe rapid repeats
+  if (urgent){                                               // danger doesn't queue behind fish chatter (v0.19.1)
+    fishing.toast = t; fishing.toastT = 3; fishing.urgent = true; return;
+  }
   toastQ.push(t); if (toastQ.length > 4) toastQ.shift();
-  if (fishing.toastT <= 0){ fishing.toast = toastQ.shift(); fishing.toastT = 1.9; }
+  if (fishing.toastT <= 0){ fishing.toast = toastQ.shift(); fishing.toastT = 1.9; fishing.urgent = false; }
 }
 function rollCatch(rich) {
   const night = 1 - dayFactor(), rare = 1 + UP.netRare()*0.25;
@@ -3881,7 +3904,7 @@ function toggleFishing() {
   fishing.active = true; fishing.prog = 0; SFX.netCast();
 }
 function stepFishing(dt) {
-  if (fishing.toastT > 0){ fishing.toastT -= dt; if (fishing.toastT <= 0 && toastQ.length){ fishing.toast = toastQ.shift(); fishing.toastT = 1.9; } }
+  if (fishing.toastT > 0){ fishing.toastT -= dt; if (fishing.toastT <= 0 && toastQ.length){ fishing.toast = toastQ.shift(); fishing.toastT = 1.9; fishing.urgent = false; } }
   if (!fishing.active) return;
   if (cargoCount() >= player.cargoMax){ fishing.active = false; setToast('Hold is full'); return; }
   const ga = groundAt(ship.x, ship.y), rich = ga.rich;
@@ -5112,7 +5135,7 @@ function stepEnemies(dt){
     } else if (REGION_BOSS[curRegion] && world.elapsed >= bossCdAt(curRegion)){
       bossT -= dt;
       bossWarnT = (bossT > 0 && bossT < 10) ? bossT : 0;      // the sea telegraphs the rise (v0.19.0)
-      if (bossWarnT && !bossWarned){ bossWarned = true; setToast('⚠ The water trembles — something vast stirs beneath!'); }
+      if (bossWarnT && !bossWarned){ bossWarned = true; setToast('⚠ The water trembles — something vast stirs beneath!', true); }
       if (bossT >= 10) bossWarned = false;
       if (!nearbyDock() && bossT<=0) bossT = spawnMiniBoss(curRegion) ? 30 : 3;   // land under the spawn roll → retry soon
     }
@@ -6402,7 +6425,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.19.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.19.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
