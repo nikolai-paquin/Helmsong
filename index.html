@@ -2013,20 +2013,17 @@ function drawIsland(isl) {
   // foam hugging the coast
   for (let k=0;k<2;k++)
     polyFill(ring(1.10 - k*0.045, 0), `rgba(${f[0]},${f[1]},${f[2]},${0.26 - k*0.10})`, null);
-  // sea stack: crooked faceted spire — shrinking rock slabs that wander as they
-  // climb, shaded per face like the cliff tiers; pale guano cap on some. The
-  // island polygon underneath still handles collision/shelf/foam unchanged.
+  // sea rock: squat lumpy boulder — one wide slab + a smaller offset cap, each
+  // ring's radius re-jittered so the silhouette reads organic, not segmented.
+  // The island polygon underneath still handles collision/shelf/foam unchanged.
   if (isl.rock){
-    const RC = [136,128,116], RCD = [96,90,82];   // bare weathered stone — sea stacks ignore the biome palette
-    const hsd = isl.x|0, L = 3 + (isl.r > 16 ? 1 : 0), topH = isl.H + isl.r*1.5, shr = 0.8/L;
-    let ox = 0, oy = 0, z0 = 0.8;
-    for (let k=0;k<L;k++){
-      const s0 = 1 - k*shr, s1 = 1 - (k+1)*shr, z1 = z0 + (topH - 0.8)/L;
-      const nx2 = ox + (hash2(hsd, k*11, 103) - 0.5) * isl.r * 0.4;
-      const ny2 = oy + (hash2(k*17, hsd, 107) - 0.5) * isl.r * 0.25;
-      const g = isl.pts.map(p => proj(isl.x + ox + Math.cos(p.a)*p.r*s0, isl.y + oy + Math.sin(p.a)*p.r*s0, z0));
-      const tp = isl.pts.map(p => proj(isl.x + nx2 + Math.cos(p.a)*p.r*s1, isl.y + ny2 + Math.sin(p.a)*p.r*s1, z1));
-      for (let i=0;i<n;i++)   // plug pass — crooked slabs open back-face gaps, fill them dark first
+    const RC = [136,128,116], RCD = [96,90,82];   // bare weathered stone — sea rocks ignore the biome palette
+    const hsd = isl.x|0;
+    const wob = k => isl.pts.map((p,i) => p.r * lerp(0.8, 1.2, hash2(i, hsd + k*7, 113)));
+    const slab = (s0, s1, z0, z1, ox, oy, w0, w1, capC) => {
+      const g  = isl.pts.map((p,i) => proj(isl.x + Math.cos(p.a)*w0[i]*s0, isl.y + Math.sin(p.a)*w0[i]*s0, z0));
+      const tp = isl.pts.map((p,i) => proj(isl.x + ox + Math.cos(p.a)*w1[i]*s1, isl.y + oy + Math.sin(p.a)*w1[i]*s1, z1));
+      for (let i=0;i<n;i++)   // plug pass — wobbly rims open back-face gaps, fill them dark first
         polyFill([g[i], g[(i+1)%n], tp[(i+1)%n], tp[i]], col(quant(RC, 0)), null);
       for (let i=0;i<n;i++){
         const a = isl.pts[i].a, b2 = isl.pts[(i+1)%n].a;
@@ -2035,10 +2032,16 @@ function drawIsland(isl) {
         const nd = clamp(Math.cos(mid)*LIGHT[0] + nyf*LIGHT[1], 0, 1);
         polyFill([g[i], g[(i+1)%n], tp[(i+1)%n], tp[i]], qcol(RC, nd), col(RCD));
       }
-      // top slab — snow-capped in ice waters, gull-bleached on some elsewhere
-      const capC = k < L-1 ? RC : isl.biome === 'ice' ? [230,240,246] : hash2(hsd, 5, 109) > 0.55 ? [216,214,206] : RC;
-      polyFill(tp, col(capC), col(PAL.OUTLINE));
-      ox = nx2; oy = ny2; z0 = z1;
+      polyFill(tp, col(capC), col(RCD));
+    };
+    const w0 = wob(0), w1 = wob(1), w2 = wob(2);
+    const h1 = isl.H + isl.r*0.5;
+    const capC = isl.biome === 'ice' ? [230,240,246] : hash2(hsd, 5, 109) > 0.6 ? [216,214,206] : RC;
+    slab(1, 0.72, 0.8, h1, 0, 0, w0, w1, isl.r > 12 ? RC : capC);
+    if (isl.r > 12){   // second, smaller boulder perched off-centre
+      const ox = (hash2(hsd, 9, 127) - 0.5) * isl.r * 0.32, oy = (hash2(9, hsd, 131) - 0.5) * isl.r * 0.2;
+      const s1b = 0.72 * lerp(0.85, 1.05, hash2(hsd, 3, 133));
+      slab(s1b, 0.34, h1, h1 + isl.H*0.7 + isl.r*0.3, ox, oy, w1, w2, capC);
     }
     return;
   }
@@ -6289,7 +6292,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.2';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.3';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
