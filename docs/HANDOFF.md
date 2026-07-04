@@ -49,6 +49,42 @@ and the land lost its **near-black rims** ("cartoony") — beach/tier outlines
 are now darkened versions of their own fill + sparse surface flecks. The game
 is **v0.18.5**, a git repo (log = changelog), with 4 save slots.
 
+**✅ V15+V16 BACKLOG COMPLETE (2026-07-04, v0.20.0–v0.22.2 — the entire
+deferred backlog shipped in 5 verified batches):**
+- **V15 fleet trade routes (v0.20.0):** while docked, 'Send out' puts a fleet
+  ship on a circuit to an auto-picked partner port (1.8–8.2k). Abstract legs
+  (timer, no simulated hull) pay coin per docking (scales with leg time,
+  route danger, cargo class); per-leg raid rolls scale with the roughest
+  waters crossed (truce halves); raids cost 22–42 hull, 0 = ship lost; good
+  legs patch +8 (calm routes sustain, dangerous ones bleed). Routed ships
+  leave the escort formation + skip the dock heal; Crew tab shows route/
+  income/countdown + Recall; rides the fleet save; ticks even while docked.
+- **V15 hold sieges + war fort flips (v0.21.0):** periodic Red Sails sieges
+  on the player stronghold (roll every 5–10 min; +chance when they hate you;
+  truce = peace at home). Far: walls bleed 2.6hp/s (urgent toasts + hold
+  arrow); near (<2.6k): drain stops, 2 real cull-proof raiders spawn — sink
+  them to lift (+80 walls). Fall = banner struck, half the vault spills at
+  the ruin (re-claimable) — a setback, not a game over. Siege timer persists
+  across reload. War-end: 35% a nearby crown/redsails fort flips owner
+  (`st.fac` override, 6th fort tuple field).
+- **V16 six culture kits (v0.22.0) ⚠ WORLD NAMES CHANGED → saves reset:**
+  ten seaboards — cold=norse; temperate by longitude: roman 'Marble Coast' /
+  greek 'Thalassians' / euro / east / isles 'Mist Isles' / mayan 'Feathered
+  Shore'; hot: african 'Goldshore' / desert / egyptian 'Riverborn'. Each kit:
+  CNAMES + captains + produce bias + pennant + shore building (villa w/
+  portico · temple-front · hall+torii · step pyramid · thatched roundhouse ·
+  mudbrick+pylon) + hamlet hut palette + civilian hull on existing rigs
+  (galley/bireme/atake/seacanoe/mtepe/felucca). Boundary chunks can carry a
+  neighbour's port name — frontier towns, accepted charm.
+- **V16 NPC hazard parity + relations drift (v0.22.1):** `applyHazards` —
+  npc/enemy SHIP hulls respect shoals (×0.78/×0.45), rip/whirl forces and
+  berg pushes (throttled 0.35s/entity; monsters exempt); rep eases toward
+  ±15 by 1.5/game-day. Plus a latent null-target npc-cruise crash guarded.
+- **small fixes (v0.22.2):** gamepad button 6 cycles ammo (+settings row,
+  Controls tab retuned 11kb+7pad rows); touch idle joystick moved off the
+  compass; islands y-sort by NORTH reach (isl.y − r·0.85) — coast-pressed
+  boats no longer painted over (the old §6 wrinkle, closed).
+
 **✅ PLAYTEST_V18 QA CYCLE COMPLETE (2026-07-03, v0.19.0–v0.19.4).** The
 four-lens QA report ([`PLAYTEST_V18.md`](PLAYTEST_V18.md), ~30 findings) was
 fixed in 5 verified batches the same day: **terrors done right** (enemy iron
