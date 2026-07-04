@@ -2093,14 +2093,16 @@ const SPRITES = {
   // ship_fisher, ship_pirate, ship_raider, ship_warship, ship_ghost, ship_patrol,
   // monsters / wildlife / islands go here too as you make them.
 };
-// Land/prop sprite set (FLORA batch — docs/SPRITE_LIST.md): kebab-named files in
-// assets/sprites/, underscore keys here, numbered variants picked by world hash.
-const LAND_SPRITES = { tree_green:4, tree_tropic:4, tree_dead:4, tree_snow:3, cactus:4,
-  house_euro:4, house_norse:4, runestone:2, house_east:2, house_desert:3, obelisk:1,   // east take 2 (open-frame) cut — too wispy at game scale
-  fort:1, fort_razed:1, rock_stack:4, peak_crag:4, iceberg:3, flotsam:3, crate:3, barrel:3 };
+// Land/prop sprite set — RETIRED by user preference (2026-07-03, v0.17.4): the
+// generated sprites read too detailed against the code-drawn world and keying
+// artifacts showed at game scale ("go back to just the simple code assets").
+// The drawSpriteBuf pipeline + its call sites stay dormant (same pattern as the
+// retired ghost ship) — re-enable by restoring entries here + PNGs in
+// assets/sprites/ (both live in git history, v0.17.0–v0.17.3).
+const LAND_SPRITES = {};
 for (const k in LAND_SPRITES) for (let i=1;i<=LAND_SPRITES[k];i++)
   SPRITES[k+'_'+i] = 'assets/sprites/'+k.replace(/_/g,'-')+'-'+i+'.png';
-const sprVar = (base, h) => base + '_' + (1 + Math.min(LAND_SPRITES[base]-1, (h*LAND_SPRITES[base])|0));
+const sprVar = (base, h) => LAND_SPRITES[base] ? base + '_' + (1 + Math.min(LAND_SPRITES[base]-1, (h*LAND_SPRITES[base])|0)) : base;
 const SPR = {};
 (function loadSprites(){ for (const k in SPRITES){ const img = new Image(); img.onload = () => { SPR[k] = img; }; img.src = SPRITES[k]; } })();
 // Ornate HUD art from the PixelHUDUI pack (gold-framed slot, bars, heart, icons).
@@ -6147,7 +6149,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.17.3';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.17.4';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
