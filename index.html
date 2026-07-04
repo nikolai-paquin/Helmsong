@@ -1013,7 +1013,7 @@ function abandonContract(i){
 function completeDeliveries(isl){
   for (let i=player.contracts.length-1;i>=0;i--){
     const c = player.contracts[i];
-    if (c.kind==='deliver' && Math.hypot(isl.port.dockX-c.tx, isl.port.dockY-c.ty) < 50 && (player.cargo[c.good]||0) >= c.qty){
+    if (c.kind==='deliver' && Math.hypot(wrapDX(isl.port.dockX, c.tx), isl.port.dockY-c.ty) < 50 && (player.cargo[c.good]||0) >= c.qty){   // wrap-aware — circumnavigating no longer strands deliveries (v0.19.2)
       removeCargo(c.good, c.qty); earn(c.reward); player.stats.contractsDone++;
       player.contracts.splice(i,1); setToast('Delivered! +' + c.reward + ' coin'); SFX.coin();
     }
@@ -1624,7 +1624,7 @@ const keys = {};
 // can't leave a movement key "stuck" — e.g. a stuck reef key would pin the sail at 0
 // and make W feel dead. Genuinely-held keys re-assert via OS key-repeat next frame.
 function clearKeys(){ for (const kk in keys) keys[kk] = false; }
-function toggleMap(){ if (ui.port) return; ui.mapOpen = !ui.mapOpen; ui.zoomEdit = null; SFX.map(); if (ui.mapOpen){ mapWorldView = false; mapRange = 9000; ui.inv = false; } clearKeys(); }   // always open in local mode
+function toggleMap(){ if (ui.port || ui.hold) return; ui.mapOpen = !ui.mapOpen; ui.zoomEdit = null; SFX.map(); if (ui.mapOpen){ mapWorldView = false; mapRange = 9000; ui.inv = false; } clearKeys(); }   // always open in local mode
 window.addEventListener('blur', clearKeys);
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -1649,7 +1649,14 @@ window.addEventListener('keydown', e => {
   keys[k] = true;
   if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
   if (e.repeat) return;
-  if (ui.rebind && ui.rebind.type==='key'){ if (k!=='escape'){ bindK[ui.rebind.action]=k; saveBinds(); } ui.rebind=null; return; }
+  if (ui.rebind && ui.rebind.type==='key'){
+    if (k==='o'){ setToast('O opens Settings — choose another key'); }
+    else if (k!=='escape'){
+      for (const a2 in bindK) if (a2 !== ui.rebind.action && bindK[a2] === k) bindK[a2] = bindK[ui.rebind.action];   // swap — one key, one action (v0.19.2)
+      bindK[ui.rebind.action]=k; saveBinds();
+    }
+    ui.rebind=null; return;
+  }
   if (ui.settings){ if (k==='escape'||k==='o'){ ui.settings=false; ui.rebind=null; clearKeys(); } return; }
   if (ui.paused){
     if (ui.pauseConfirm){ if (k==='escape') ui.pauseConfirm=false; return; }
@@ -1694,6 +1701,13 @@ canvas.addEventListener('mousedown', e => {
       for (const r of actionSlotRects){ if (hit(r)){ if (r.sl.click){ SFX.click(); r.sl.click(); } break; } }
       return;
     }
+    // HUD chrome doesn't discharge weapons (v0.19.2): the gold-ringed minimap
+    // LOOKS clickable — so it is (opens the chart); pills/compass/weather swallow
+    { const msx = mouse.x/US, msy = mouse.y/US, size = 150, m2 = 16;
+      if (Math.hypot(msx-(W-size-m2+size/2), msy-(H-size-m2+size/2)) < size/2+9){ SFX.click(); toggleMap(); return; }
+      if (Math.hypot(msx-91, msy-(H-91)) < 80) return;                                  // compass
+      if (msx < 262 && msy < 240) return;                                               // status pills / WANTED / heart
+      if (msx > W-262 && msy < 24 + 104 + forecast().length*22) return; }               // weather panel
     fireCannon();
   }
 });
@@ -3230,7 +3244,7 @@ function drawLocalChart(mx,my,size,open){
     ctx.textAlign='left';
   }
   for (const c of player.contracts) if (c.kind==='deliver'){
-    const ix=clamp(ctr.x+(c.tx-ship.x)*scale, mx+4, mx+size-4), iy=clamp(ctr.y+(c.ty-ship.y)*scale, my+4, my+size-4);
+    const ix=clamp(ctr.x+wrapDX(c.tx, ship.x)*scale, mx+4, mx+size-4), iy=clamp(ctr.y+(c.ty-ship.y)*scale, my+4, my+size-4);
     ctx.fillStyle='#7ec8ff'; ctx.beginPath(); ctx.moveTo(ix,iy-4); ctx.lineTo(ix+4,iy); ctx.lineTo(ix,iy+4); ctx.lineTo(ix-4,iy); ctx.closePath(); ctx.fill();
   }
   if (waypoint) drawWpMark(clamp(ctr.x+(waypoint.x-ship.x)*scale, mx+5, mx+size-5), clamp(ctr.y+(waypoint.y-ship.y)*scale, my+5, my+size-5));
@@ -3292,7 +3306,7 @@ function drawWorldChart(mx,my,size){
     else { ctx.font=fntS(9); ctx.fillStyle='rgba(233,222,198,0.6)'; ctx.textAlign='right';
       ctx.fillText('no contested waters at present — wars flare and fade', dx+dw-8, Math.max(dy+12, my+76)); ctx.textAlign='center'; }
   }
-  for (const c of player.contracts) if (c.kind==='deliver'){ const p=wpx(c.tx,c.ty); ctx.fillStyle='#7ec8ff'; ctx.beginPath(); ctx.moveTo(p[0],p[1]-4); ctx.lineTo(p[0]+4,p[1]); ctx.lineTo(p[0],p[1]+4); ctx.lineTo(p[0]-4,p[1]); ctx.closePath(); ctx.fill(); }
+  for (const c of player.contracts) if (c.kind==='deliver'){ const p=wpx(((c.tx % WORLD_W)+WORLD_W)%WORLD_W, c.ty); ctx.fillStyle='#7ec8ff'; ctx.beginPath(); ctx.moveTo(p[0],p[1]-4); ctx.lineTo(p[0]+4,p[1]); ctx.lineTo(p[0],p[1]+4); ctx.lineTo(p[0]-4,p[1]); ctx.closePath(); ctx.fill(); }
   if (waypoint){ const q=wpx(waypoint.x, waypoint.y); drawWpMark(q[0], q[1]); }
   const p=wpx(ship.x,ship.y);
   ctx.strokeStyle=`rgba(255,217,138,${0.5+0.5*Math.sin(world.elapsed*4)})`; ctx.lineWidth=1.5;
@@ -3514,7 +3528,7 @@ function drawGuides(){
   if (ui.port || ui.settings || ui.mapOpen || ship.sinking) return;
   const d = nearbyPortWithin(900);
   if (d) drawGuide(d.port.dockX, d.port.dockY, 'rgba(255,217,138,0.9)', '⚓ ' + d.port.name);
-  for (const c of player.contracts) if (c.kind==='deliver') drawGuide(c.tx, c.ty, 'rgba(126,200,255,0.85)', c.tname);
+  for (const c of player.contracts) if (c.kind==='deliver') drawGuide(c.tx + Math.round((ship.x - c.tx)/WORLD_W)*WORLD_W, c.ty, 'rgba(126,200,255,0.85)', c.tname);   // steer the short way round
   if (!player.quest.done && player.quest.step===2){ const cd = nearestCursed(); if (cd) drawGuide(cd.x, cd.y, 'rgba(184,120,220,0.9)', 'Cursed Deep'); }
   if (waypoint) drawGuide(waypoint.x, waypoint.y, 'rgba(120,240,220,0.9)', 'Waypoint');
   if (war && Math.hypot(war.x-ship.x, war.y-ship.y) < 6000) drawGuide(war.x, war.y, 'rgba(232,120,90,0.9)', '⚔ contested waters');
@@ -4241,7 +4255,10 @@ function drawMarketTab(isl, ax, ay, aw){
     ctx.fillStyle= faraway?'rgba(233,222,198,0.3)':'rgba(255,217,138,0.9)'; ctx.fillText(faraway?'—':String(priceFor(isl,id,'buy')), cBuy, ry+3);
     ctx.fillStyle='rgba(154,209,122,0.95)'; ctx.fillText(priceFor(isl,id,'sell'), cSell, ry+3);
     let bx = ax+aw, bh=26;                                                                    // right-aligned auto-sized buttons
-    if (own>1){ const w=btnW('Sell all',11,7); bx-=w; portButtons.push(mkBtn(bx,ry,w,bh,'Sell all',()=>doSellAll(isl,id))); bx-=6; }
+    { const w=btnW('Sell all',11,7); bx-=w;                                                   // slot always reserved — Buy must not slide under a spam-clicking cursor (v0.19.2)
+      if (own>1) portButtons.push(mkBtn(bx,ry,w,bh,'Sell all',()=>doSellAll(isl,id)));
+      else { ctx.save(); ctx.globalAlpha=0.3; brassButton(bx,ry,w,bh,'Sell all',{ font:fnt(11) }); ctx.restore(); }
+      bx-=6; }
     { const w=btnW('Sell',11,8); bx-=w; portButtons.push(mkBtn(bx,ry,w,bh,'Sell',()=>doSell(isl,id))); bx-=6; }
     if (!faraway){ const w=btnW('Buy',11,8); bx-=w; portButtons.push(mkBtn(bx,ry,w,bh,'Buy', ()=>doBuy(isl,id))); }
     ry += pitch;
@@ -4471,7 +4488,7 @@ function drawLogTab(ax, ay, aw){
 }
 /* ===================== INVENTORY / SHIP'S HOLD (V10) ===================== */
 let invButtons = [];
-function toggleInv(){ if (ui.settings || ui.paused) return; if (ui.mapOpen) ui.mapOpen = false; ui.inv = !ui.inv; SFX.book(); clearKeys(); }   // works everywhere, docked included
+function toggleInv(){ if (ui.settings || ui.paused || ui.hold) return; if (ui.mapOpen) ui.mapOpen = false; ui.inv = !ui.inv; SFX.book(); clearKeys(); }   // works everywhere, docked included
 /* ledger v2 (V11) — a price BOOK: up to 4 known ports per good, with coordinates,
    so the hold can answer "where is this worth sailing to?" (price × distance). */
 function ledgerNote(id, p, name, x, y, rumor){
@@ -5402,7 +5419,12 @@ function respawn(){
   graceT = 8;   // safe grace period after a sinking
   enemies.length = 0; shots.length = 0;
   const lp = player.lastPort;
-  if (lp){ const sp = findOpenWater(lp.x, lp.y); ship.x = sp.x; ship.y = sp.y; setToast('The '+player.boatName+' was lost — you wash ashore at ' + lp.name); }
+  const lpGate = lp && REGIONS[regionAt(lp.x, lp.y)].gate;
+  if (lp && !(lpGate && !(player.up[lpGate.comp] > 0))){
+    const sp = findOpenWater(lp.x, lp.y); ship.x = sp.x; ship.y = sp.y; setToast('The '+player.boatName+' was lost — you wash ashore at ' + lp.name); }
+  else if (lp){                                                // last port sits in a gated sea you can't survive — no death loops (v0.19.2)
+    const sp = findOpenWater(START.x, START.y); ship.x = sp.x; ship.y = sp.y;
+    setToast('The '+player.boatName+' was lost — survivors carry you to gentler waters'); }
   else { const sp = findOpenWater(START.x, START.y); ship.x = sp.x; ship.y = sp.y; setToast('The '+player.boatName+' was lost — you drift to safety'); }
   cam.x = ship.x; cam.y = ship.y;
   syncEscorts();   // the survivors of your fleet wash ashore with you (AFTER the ship moves)
@@ -6114,8 +6136,15 @@ function stepNpcs(dt){
 function hitNpc(n, dmg, src='player', by){
   n.hp-=dmg; n.hitT=0.18;
   sfxWorld(n.x, n.y, v => SFX.hit(v), 0.7);
-  if (src==='player' && !n.provoked){ n.provoked=true; becomePirate(n); repAdj(facOfNpc(n), -8);
-    if (n.navy || n.type==='merchant' || n.type==='trader') n.hostile=true; }   // armed crews defend themselves
+  if (src==='player' && !n.provoked){
+    if (n.hp > 0 && !n.warned){                                // one honest miss isn't a career (v0.19.2)
+      n.warned = true;
+      setToast('⚠ Your iron struck a ' + (FACTIONS[facOfNpc(n)] ? FACTIONS[facOfNpc(n)].adj : 'neutral') + ' hull — strike her again and you are a pirate', true);
+    } else {
+      n.provoked=true; becomePirate(n); repAdj(facOfNpc(n), -8);
+      if (n.navy || n.type==='merchant' || n.type==='trader') n.hostile=true;   // armed crews defend themselves
+    }
+  }
   if (by && !by.dead){ n.foe = by; n.foeT = 14; }              // remember the attacker — fight back or flee
   if (n.hp<=0 && !n.dead){ n.dead=true; killNpc(n, src); }
 }
@@ -6425,7 +6454,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.19.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.19.2';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
