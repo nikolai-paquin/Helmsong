@@ -2013,8 +2013,35 @@ function drawIsland(isl) {
   // foam hugging the coast
   for (let k=0;k<2;k++)
     polyFill(ring(1.10 - k*0.045, 0), `rgba(${f[0]},${f[1]},${f[2]},${0.26 - k*0.10})`, null);
-  // sea-stack rocks are a sprite spire rising straight from the foam (FLORA batch)
-  if (isl.rock && drawSpriteBuf(sprVar('rock_stack', hash2(isl.x|0, isl.y|0, 57)), isl.x, isl.y, 0, isl.r*1.8 + 8)) return;
+  // sea stack: crooked faceted spire — shrinking rock slabs that wander as they
+  // climb, shaded per face like the cliff tiers; pale guano cap on some. The
+  // island polygon underneath still handles collision/shelf/foam unchanged.
+  if (isl.rock){
+    const RC = [136,128,116], RCD = [96,90,82];   // bare weathered stone — sea stacks ignore the biome palette
+    const hsd = isl.x|0, L = 3 + (isl.r > 16 ? 1 : 0), topH = isl.H + isl.r*1.5, shr = 0.8/L;
+    let ox = 0, oy = 0, z0 = 0.8;
+    for (let k=0;k<L;k++){
+      const s0 = 1 - k*shr, s1 = 1 - (k+1)*shr, z1 = z0 + (topH - 0.8)/L;
+      const nx2 = ox + (hash2(hsd, k*11, 103) - 0.5) * isl.r * 0.4;
+      const ny2 = oy + (hash2(k*17, hsd, 107) - 0.5) * isl.r * 0.25;
+      const g = isl.pts.map(p => proj(isl.x + ox + Math.cos(p.a)*p.r*s0, isl.y + oy + Math.sin(p.a)*p.r*s0, z0));
+      const tp = isl.pts.map(p => proj(isl.x + nx2 + Math.cos(p.a)*p.r*s1, isl.y + ny2 + Math.sin(p.a)*p.r*s1, z1));
+      for (let i=0;i<n;i++)   // plug pass — crooked slabs open back-face gaps, fill them dark first
+        polyFill([g[i], g[(i+1)%n], tp[(i+1)%n], tp[i]], col(quant(RC, 0)), null);
+      for (let i=0;i<n;i++){
+        const a = isl.pts[i].a, b2 = isl.pts[(i+1)%n].a;
+        const mid = a + (((b2 - a + Math.PI)%TAU)-Math.PI)/2, nyf = Math.sin(mid);
+        if (nyf < -0.25) continue;
+        const nd = clamp(Math.cos(mid)*LIGHT[0] + nyf*LIGHT[1], 0, 1);
+        polyFill([g[i], g[(i+1)%n], tp[(i+1)%n], tp[i]], qcol(RC, nd), col(RCD));
+      }
+      // top slab — snow-capped in ice waters, gull-bleached on some elsewhere
+      const capC = k < L-1 ? RC : isl.biome === 'ice' ? [230,240,246] : hash2(hsd, 5, 109) > 0.55 ? [216,214,206] : RC;
+      polyFill(tp, col(capC), col(PAL.OUTLINE));
+      ox = nx2; oy = ny2; z0 = z1;
+    }
+    return;
+  }
   // beach ring (rocks are bare stone)
   polyFill(ring(1, 1.2), col(isl.rock ? B.cliffD : B.sand), col(PAL.OUTLINE));
   // terraced tiers: vertical cliff walls + flat tops, stacked inward and upward
@@ -6262,7 +6289,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.2';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
