@@ -3838,7 +3838,42 @@ function drawPier(isl) {
   polyFill([ proj(p.pierX,p.pierY,z+38), proj(p.pierX,p.pierY,z+27),
              proj(p.pierX+Math.cos(p.ang)*16, p.pierY+Math.sin(p.ang)*16, z+32+wav) ],
            CULTURES[portCulture(isl)].pennant, col(PAL.OUTLINE));
+  // dockside clutter — a crate or barrel or two on the sand by the pier root
+  const cs = (p.seed>>>0);
+  for (let k=0;k<2;k++){
+    const hcl = hash2(cs, k*13, 87); if (k && hcl < 0.35) break;   // 2nd piece at ~65% of ports
+    const side2 = hcl > 0.5 ? 1 : -1;
+    const cxp = p.pierX - Math.cos(p.ang)*(4+k*3) + Math.cos(perp)*(13+k*6)*side2;
+    const cyp = p.pierY - Math.sin(p.ang)*(4+k*3) + Math.sin(perp)*(13+k*6)*side2;
+    if (!landAt(cxp, cyp)) continue;
+    if (hash2(k, cs, 89) < 0.55) drawCrateP(cxp, cyp, 1.2, 2.4); else drawBarrelP(cxp, cyp, 1.2, 2.1);
+  }
   drawPortHouse(isl);
+}
+/* dockside props shared by the pier + hamlets */
+function drawCrateP(x, y, z, s){
+  const Q = (dx,dy,dz) => proj(x+dx*s, y+dy*s, z+dz*s);
+  polyFill([Q(-1,1,0),Q(1,1,0),Q(1,1,1.7),Q(-1,1,1.7)], col([126,92,54]), col(PAL.OUTLINE));
+  polyFill([Q(1,1,0),Q(1.5,-0.5,0),Q(1.5,-0.5,1.7),Q(1,1,1.7)], col([104,74,42]), col(PAL.OUTLINE));
+  polyFill([Q(-1,1,1.7),Q(1,1,1.7),Q(1.5,-0.5,1.7),Q(-0.5,-0.5,1.7)], col([160,120,70]), col(PAL.OUTLINE));
+}
+function drawBarrelP(x, y, z, s){
+  const b0 = proj(x, y, z), b1 = proj(x, y, z+s*2.2);
+  bctx.strokeStyle = col([116,78,44]); bctx.lineCap = 'round'; bctx.lineWidth = Math.max(2, s*1.5*VIEW);
+  bctx.beginPath(); bctx.moveTo(b0[0],b0[1]); bctx.lineTo(b1[0],b1[1]); bctx.stroke();
+  bctx.strokeStyle = col([158,116,64]); bctx.lineWidth = 1;
+  for (const t of [0.35, 0.75]){ const h = proj(x, y, z+s*2.2*t), w = s*0.7*VIEW;
+    bctx.beginPath(); bctx.moveTo(h[0]-w,h[1]); bctx.lineTo(h[0]+w,h[1]); bctx.stroke(); }
+  bctx.lineCap = 'butt';
+}
+/* small culture dwelling used by the port hamlets */
+function drawHut(hx, hy, zb, s, wall, wallD, roof){
+  const Q = (dx,dy,dz) => proj(hx+dx*s, hy+dy*s, zb+dz*s);
+  polyFill([Q(-1,0.75,0),Q(1,0.75,0),Q(1,0.75,1),Q(-1,0.75,1)], col(wall), col(PAL.OUTLINE));
+  polyFill([Q(1,0.75,0),Q(1.5,-0.35,0),Q(1.5,-0.35,1),Q(1,0.75,1)], col(wallD), col(PAL.OUTLINE));
+  polyFill([Q(-1.15,0.85,1),Q(1.15,0.85,1),Q(0.95,0.05,1.8),Q(-0.95,0.05,1.8)], col(roof), col(PAL.OUTLINE));
+  polyFill([Q(1.15,0.85,1),Q(1.5,-0.35,1),Q(1.25,-0.45,1.7),Q(0.95,0.05,1.8)], col(lift(roof,0.8)), col(PAL.OUTLINE));
+  bctx.fillStyle = col([44,36,28]); const d = Q(0,0.8,0); bctx.fillRect(d[0]-1, d[1]-3, 3, 3);
 }
 /* culture architecture on the shore by every pier (V13) — how a harbour is built
    tells you whose waters these are before you ever read a name */
@@ -3846,22 +3881,15 @@ function drawPortHouse(isl){
   const p = isl.port, cult = portCulture(isl), a = p.ang;
   const bx = p.pierX - Math.cos(a)*30, by = p.pierY - Math.sin(a)*30, zb = 5;
   const P = (dx,dy,dz) => proj(bx+dx, by+dy, zb+dz);
-  // sprite architecture (FLORA batch) — house variant picked by port hash; norse
-  // keeps its rune stone / desert its obelisk as a side-prop along the shore.
-  // The code-drawn buildings below remain the fallback until images load.
-  const HOUSE_SPR = { norse:'house_norse', east:'house_east', desert:'house_desert', euro:'house_euro' };
-  if (drawSpriteBuf(sprVar(HOUSE_SPR[cult] || 'house_euro', hash2(isl.x|0, isl.y|0, 71)), bx, by, zb, 26)){
-    const sa = a + Math.PI/2, sx = bx + Math.cos(sa)*24, sy = by + Math.sin(sa)*24;
-    if (cult === 'norse') drawSpriteBuf(sprVar('runestone', hash2(isl.y|0, isl.x|0, 73)), sx, sy, zb, 13);
-    else if (cult === 'desert') drawSpriteBuf('obelisk_1', sx, sy, zb, 24);
-    return;
-  }
   if (cult === 'norse'){
     // long stave hall — dark planks, steep roof, crossed gable beams; a rune stone stands by
     polyFill([P(-15,7,0),P(15,7,0),P(15,7,9),P(-15,7,9)], col([74,58,40]), col(PAL.OUTLINE));
     polyFill([P(15,7,0),P(21,-4,0),P(21,-4,9),P(15,7,9)], col([60,46,32]), col(PAL.OUTLINE));
     polyFill([P(-15,7,9),P(15,7,9),P(14,1,19),P(-14,1,19)], col([92,68,44]), col(PAL.OUTLINE));
     polyFill([P(15,7,9),P(21,-4,9),P(19,-6,17),P(14,1,19)], col([70,52,34]), col(PAL.OUTLINE));
+    bctx.strokeStyle = col([56,42,28]); bctx.lineWidth = 1;                         // roof plank seams
+    for (const gx of [-7,0,7]){ const s1=P(gx*1.05,7,9), s2=P(gx*0.98,1,19);
+      bctx.beginPath(); bctx.moveTo(s1[0],s1[1]); bctx.lineTo(s2[0],s2[1]); bctx.stroke(); }
     bctx.strokeStyle = col([110,84,54]); bctx.lineWidth = 1.4;                      // crossed gable beams
     for (const gx of [-14,14]){ const g1=P(gx-3,1,22), g2=P(gx+3,1,17), g3=P(gx+3,1,22), g4=P(gx-3,1,17);
       bctx.beginPath(); bctx.moveTo(g1[0],g1[1]); bctx.lineTo(g2[0],g2[1]); bctx.moveTo(g3[0],g3[1]); bctx.lineTo(g4[0],g4[1]); bctx.stroke(); }
@@ -3880,6 +3908,8 @@ function drawPortHouse(isl){
     polyFill([P(-5,4,13),P(5,4,13),P(5,4,18),P(-5,4,18)], col([146,120,92]), col(PAL.OUTLINE));        // upper body
     polyFill([P(-9,6,18),P(9,6,18),P(6,1,22),P(-6,1,22)], col([164,58,44]), col(PAL.OUTLINE));         // upper roof
     for (const s2 of [-1,1]){ const e1=P(9*s2,6,18), e2=P(12*s2,6,21); bctx.beginPath(); bctx.moveTo(e1[0],e1[1]); bctx.lineTo(e2[0],e2[1]); bctx.stroke(); }
+    bctx.strokeStyle = col([164,58,44]); bctx.lineWidth = 1.2;                                          // lacquered corner posts
+    for (const s2 of [-1,1]){ const c1=P(6.6*s2,5.2,0), c2=P(6.6*s2,5.2,8); bctx.beginPath(); bctx.moveTo(c1[0],c1[1]); bctx.lineTo(c2[0],c2[1]); bctx.stroke(); }
     bctx.fillStyle = '#ffd98a'; const fin = P(0,3,24); bctx.fillRect(fin[0]-1, fin[1]-2, 2, 3);         // finial
     bctx.fillStyle = col([40,30,22]); const dr2 = P(0,5.2,0); bctx.fillRect(dr2[0]-2, dr2[1]-4, 4, 4);  // door
   } else if (cult === 'desert'){
@@ -3887,6 +3917,8 @@ function drawPortHouse(isl){
     const dc = P(0,4,5), rr = 10*VIEW;
     bctx.fillStyle = col([196,168,120]); bctx.beginPath(); bctx.arc(dc[0], dc[1], rr, Math.PI, 0); bctx.closePath(); bctx.fill();
     bctx.strokeStyle = col(PAL.OUTLINE); bctx.lineWidth = 1; bctx.stroke();
+    bctx.strokeStyle = col(lift([196,168,120],1.18)); bctx.lineWidth = 1.4;                            // sunlit dome edge
+    bctx.beginPath(); bctx.arc(dc[0], dc[1], rr*0.78, Math.PI*1.08, Math.PI*1.5); bctx.stroke();
     polyFill([P(-10,6,0),P(10,6,0),P(10,6,5),P(-10,6,5)], col([206,178,130]), col(PAL.OUTLINE));       // base walls
     bctx.fillStyle = col([54,40,28]); const dr3 = P(0,6.2,0); bctx.fillRect(dr3[0]-2, dr3[1]-4, 4, 4);  // doorway
     polyFill([P(18,10,0),P(22,10,0),P(21,10,20),P(19,10,20)], col([210,186,142]), col(PAL.OUTLINE));   // obelisk
@@ -3897,9 +3929,23 @@ function drawPortHouse(isl){
     polyFill([P(11,6,0),P(16,-3,0),P(16,-3,8),P(11,6,8)], col([116,110,100]), col(PAL.OUTLINE));       // side wall
     polyFill([P(-12,7,8),P(12,7,8),P(10,0,16),P(-10,0,16)], col([150,70,52]), col(PAL.OUTLINE));       // roof
     polyFill([P(12,7,8),P(16,-3,8),P(13,-4,14),P(10,0,16)], col([124,56,42]), col(PAL.OUTLINE));
+    bctx.strokeStyle = col([172,88,66]); bctx.lineWidth = 1;                                            // sunlit roof ridge
+    const rg1 = P(-10,0,16), rg2 = P(10,0,16); bctx.beginPath(); bctx.moveTo(rg1[0],rg1[1]); bctx.lineTo(rg2[0],rg2[1]); bctx.stroke();
     bctx.fillStyle = col([70,64,56]); const ch = P(6,3,16); bctx.fillRect(ch[0]-1, ch[1]-5, 3, 6);      // chimney
     bctx.fillStyle = col([44,36,28]); const dr4 = P(-3,6.2,0); bctx.fillRect(dr4[0]-2, dr4[1]-4, 4, 4); // door
     bctx.fillStyle = '#ffd98a'; const wn = P(5,6.2,4); bctx.fillRect(wn[0]-1, wn[1]-1, 2, 2);           // lit window
+  }
+  // hamlet — 1–2 smaller culture dwellings along the shore (seeded per port; skip water)
+  const HUT_COL = { euro:[[138,132,120],[116,110,100],[150,70,52]], norse:[[74,58,40],[60,46,32],[92,68,44]],
+                    east:[[146,120,92],[120,96,72],[164,58,44]], desert:[[206,178,130],[186,158,112],[196,168,120]] };
+  const hc = HUT_COL[cult] || HUT_COL.euro, sa = a + Math.PI/2, sd = p.seed>>>0;
+  const nh = 1 + (hash2(sd&0xffff, sd>>>16, 91) > 0.45 ? 1 : 0);
+  for (let k=0;k<nh;k++){
+    const side = k ? 1 : -1, off = 30 + hash2(sd, k, 93)*14, inl = 6 + hash2(k, sd, 97)*10;
+    const hx = bx + Math.cos(sa)*off*side - Math.cos(a)*inl;
+    const hy = by + Math.sin(sa)*off*side - Math.sin(a)*inl;
+    if (!landAt(hx, hy)) continue;
+    drawHut(hx, hy, zb, 4.6 + hash2(sd, k*7, 99)*1.4, hc[0], hc[1], hc[2]);
   }
 }
 /* code-drawn stone keep on the island — banner flies its faction's colors (V12) */
@@ -6216,7 +6262,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.18.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.18.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
