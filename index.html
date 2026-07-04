@@ -1101,6 +1101,7 @@ function drawFlotsam(fl){
   const bob = Math.sin(world.elapsed*2 + fl.x*0.1)*1.5;
   const p = proj(fl.x, fl.y, 3+bob), s2 = proj(fl.x, fl.y, 0);
   bctx.fillStyle = 'rgba(10,20,30,0.25)'; bctx.beginPath(); bctx.ellipse(s2[0], s2[1]+2, 5*VIEW*0.5, 5*VIEW*0.5*ISO_Y, 0,0,TAU); bctx.fill();
+  if (drawSpriteBuf(sprVar('flotsam', hash2(fl.x|0, fl.y|0, 63)), fl.x, fl.y, 1+bob, 9)) return;
   bctx.fillStyle = col([120,86,52]); bctx.fillRect(p[0]-3, p[1]-3, 6, 6);
   bctx.fillStyle = col([182,150,100]); bctx.fillRect(p[0]-3, p[1]-3, 6, 1);
   bctx.fillStyle = 'rgba(255,240,200,0.6)'; bctx.fillRect(p[0]-1, p[1]-2, 1, 1);
@@ -1415,6 +1416,9 @@ function drawLoot(L){
     bctx.fillStyle = col([255,224,140]); bctx.beginPath(); bctx.arc(p[0]-1, p[1]-1, 2, 0, TAU); bctx.fill();
   } else {
     bctx.fillStyle = `rgba(255,220,140,${gl*0.35})`; bctx.beginPath(); bctx.arc(p[0], p[1], 8, 0, TAU); bctx.fill();
+    // sprite crate / barrel (variant keyed on the bob phase — x/y drift every frame)
+    const lk = (L.good==='rum' || L.good==='oil') ? 'barrel' : 'crate';
+    if (drawSpriteBuf(sprVar(lk, hash2(Math.round(L.ph*1000), 7, 65)), L.x, L.y, 1.5+bob, 9)){ bctx.restore(); return; }
     if (L.good==='rum' || L.good==='oil'){                                    // barrel
       bctx.fillStyle = col([116,78,44]); bctx.fillRect(p[0]-3, p[1]-4, 6, 8);
       bctx.fillStyle = col([160,118,66]); bctx.fillRect(p[0]-3, p[1]-3, 6, 1); bctx.fillRect(p[0]-3, p[1]+1, 6, 1);
@@ -1966,6 +1970,7 @@ function drawBerg(bg){
   const f = tintC(PAL.FOAM), n = bg.pts.length;
   const ring = (s, z) => bg.pts.map(p => proj(bg.x + Math.cos(p.a)*p.r*s, bg.y + Math.sin(p.a)*p.r*s, z));
   polyFill(ring(1.25, 0), `rgba(${f[0]},${f[1]},${f[2]},0.18)`, null);
+  if (drawSpriteBuf(sprVar('iceberg', hash2(bg.seed, 3, 61)), bg.x, bg.y, 0.4, bg.r*1.5 + 6)) return;   // sprite floe over the foam halo
   polyFill(ring(1, 0.8), col([214,226,236]), col([120,146,176]));            // waterline floe
   const g = ring(0.62, 0.8), tp = ring(0.62, bg.H);
   for (let i=0;i<n;i++){
@@ -2007,6 +2012,8 @@ function drawIsland(isl) {
   // foam hugging the coast
   for (let k=0;k<2;k++)
     polyFill(ring(1.10 - k*0.045, 0), `rgba(${f[0]},${f[1]},${f[2]},${0.26 - k*0.10})`, null);
+  // sea-stack rocks are a sprite spire rising straight from the foam (FLORA batch)
+  if (isl.rock && drawSpriteBuf(sprVar('rock_stack', hash2(isl.x|0, isl.y|0, 57)), isl.x, isl.y, 0, isl.r*1.8 + 8)) return;
   // beach ring (rocks are bare stone)
   polyFill(ring(1, 1.2), col(isl.rock ? B.cliffD : B.sand), col(PAL.OUTLINE));
   // terraced tiers: vertical cliff walls + flat tops, stacked inward and upward
@@ -2028,7 +2035,8 @@ function drawIsland(isl) {
     zBase = t.h;
   }
   // rocky peak crag (spire silhouette on some larger islands)
-  if (isl.peak){
+  if (isl.peak && drawSpriteBuf(sprVar('peak_crag', hash2(isl.peak.x|0, isl.peak.y|0, 59)), isl.peak.x, isl.peak.y, isl.peak.zb, (isl.peak.h - isl.peak.zb)*2)){
+  } else if (isl.peak){
     const pk = isl.peak, m = 6, ap = proj(pk.x, pk.y, pk.h), base = [];
     for (let i=0;i<m;i++){ const a=i/m*TAU, rr=pk.r*lerp(0.7,1.15,hash2(i,pk.seed,3)); base.push([pk.x+Math.cos(a)*rr, pk.y+Math.sin(a)*rr]); }
     for (let i=0;i<m;i++){
@@ -6139,7 +6147,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.17.2';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.17.3';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
