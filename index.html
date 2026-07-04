@@ -330,6 +330,22 @@ function genChunk(cx, cy) {
   }
   return c;
 }
+// V16: the sea is nobody's friend — npc and enemy hulls respect shoals,
+// currents and bergs like the player does (honest physics, no damage).
+// Lookups are throttled per entity; forces mirror stepShip's numbers.
+function applyHazards(o, dt){
+  o.hazT = (o.hazT === undefined ? Math.random()*0.35 : o.hazT) - dt;
+  if (o.hazT <= 0){ o.hazT = 0.35; o.hazShoal = shoalAt(o.x, o.y); o.hazFlow = flowAt(o.x, o.y); }
+  if (o.hazShoal){ const k = Math.pow(o.hazShoal.kind === 'sandbar' ? 0.45 : 0.78, dt*2); o.vx *= k; o.vy *= k; }
+  if (o.hazFlow){
+    const fl = o.hazFlow, d = Math.hypot(o.x-fl.x, o.y-fl.y)||1;
+    if (fl.kind === 'rip'){ o.vx += Math.cos(fl.dir)*150*dt; o.vy += Math.sin(fl.dir)*150*dt; }
+    else { const pull = 200*(1-d/fl.r)+40, a = Math.atan2(fl.y-o.y, fl.x-o.x);
+      o.vx += (Math.cos(a)*pull - Math.sin(a)*pull*0.7)*dt; o.vy += (Math.sin(a)*pull + Math.cos(a)*pull*0.7)*dt; }
+  }
+  for (const b of bergs){ const d = Math.hypot(o.x-b.x, o.y-b.y);
+    if (d < b.r+10){ const a = Math.atan2(o.y-b.y, o.x-b.x); o.x = b.x+Math.cos(a)*(b.r+10); o.y = b.y+Math.sin(a)*(b.r+10); o.vx*=0.4; o.vy*=0.4; break; } }
+}
 function flowAt(wx, wy){
   const cx = Math.floor(wx / CHUNK), cy = Math.floor(wy / CHUNK);
   for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++)
@@ -5577,6 +5593,7 @@ function stepEnemies(dt){
       }
       e.heading = tang;
     }
+    if (e.ship) applyHazards(e, dt);                           // monsters swim beneath the hazards
     e.x += e.vx*dt; e.y += e.vy*dt; keepOffLand(e);
     e.farT = (dist > (BH)/(VIEW*ISO_Y)*1.6 + 420) ? e.farT + dt : 0;
     if (e.farT > (e.war ? 60 : 6)) e.dead = true;              // war fleets fight on beyond the horizon
@@ -5615,6 +5632,16 @@ function stepDanger(dt){
   if (ship.dmgFlash > 0) ship.dmgFlash -= dt*2.5;
   if (shake > 0) shake = Math.max(0, shake - dt*30);
   if (graceT > 0) graceT -= dt;
+  // relations drift (V16) — grudges fade and gratitude cools: standing eases
+  // toward the ±15 band by 1.5 per game day; allegiances persist, extremes don't
+  if (world.elapsed - (player.repDriftT||0) > 840){
+    player.repDriftT = world.elapsed;
+    for (const fk of FACTION_ORDER){
+      const r = repOf(fk);
+      if (r > 15) player.rep[fk] = r - Math.min(1.5, r - 15);
+      else if (r < -15) player.rep[fk] = r + Math.min(1.5, -15 - r);
+    }
+  }
   if (ship.slowT > 0) ship.slowT -= dt;
   if (ship.burnT > 0 && !ship.sinking){                     // fire aboard — rain and storms douse it fast
     ship.burnT -= dt * (weather.state==='rain'||weather.state==='storm' ? 3 : 1);
@@ -6378,14 +6405,18 @@ function stepNpcs(dt){
           n.drainT = (n.drainT||0) - dt;
           if (n.drainT <= 0){ n.drainT = 2; const g = nearGroundTo(n.x, n.y, 1); if (g && Math.hypot(g.x-n.x, g.y-n.y) < 180) drainGround(g, 0.012); }
         }
+        if (!n.target) n.target = pickNpcTarget(n);              // targets can come up empty in barren water (latent null-deref, v0.22.1)
+        if (n.target){
         let tx=n.target.x-n.x, ty=n.target.y-n.y; const td=Math.hypot(tx,ty)||1;
-        if (td<70){ n.target=pickNpcTarget(n); tx=n.target.x-n.x; ty=n.target.y-n.y; }
+        if (td<70){ n.target=pickNpcTarget(n); if (n.target){ tx=n.target.x-n.x; ty=n.target.y-n.y; } }
         let dsx=tx/td, dsy=ty/td;
         [dsx,dsy] = steerClear(n, dsx, dsy);
         if (landAt(n.x+dsx*45, n.y+dsy*45)) n.target = pickNpcTarget(n);   // truly pocketed — try fresh waters
         n.vx=lerp(n.vx,dsx*n.spd*nSlow,dt*1.2); n.vy=lerp(n.vy,dsy*n.spd*nSlow,dt*1.2); n.heading=Math.atan2(n.vy,n.vx);
+        }
       }
     }
+    applyHazards(n, dt);
     n.x+=n.vx*dt; n.y+=n.vy*dt; keepOffLand(n);
     n.farT = (pdist > (BH)/(VIEW*ISO_Y)*1.9 + 650) ? n.farT+dt : 0;
     if (n.farT > (n.war ? 60 : 8)) n.dead=true;                // war fleets fight on beyond the horizon
@@ -6718,7 +6749,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.22.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.22.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
