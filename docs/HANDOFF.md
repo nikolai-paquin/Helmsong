@@ -49,6 +49,13 @@ and the land lost its **near-black rims** ("cartoony") — beach/tier outlines
 are now darkened versions of their own fill + sparse surface flecks. The game
 is **v0.18.5**, a git repo (log = changelog), with 4 save slots.
 
+**⚠ NEXT WORK QUEUE: [`PLAYTEST_V18.md`](PLAYTEST_V18.md)** — a four-lens QA
+report (hands-on + systems audit + UX audit, 2026-07-03) with ~30 verified
+findings in 5 suggested fix batches. Headliners: terror/boss balance broken at
+both ends (maxed frigate kills the Reefjaw in 3s; enemy shots under-range
+their own AI — dread parks beyond its own reach), danger communication needs
+an urgent-toast system, and delivery contracts aren't E–W wrap-aware.
+
 **What's next (pick with the user):**
 1. ~~**Play-feel pass**~~ — DONE 2026-07-02 (menus/new-player flow; 5 fixes, §6).
 2. **Post-plan backlog** (biggest first): automated fleet trade routes (passive
