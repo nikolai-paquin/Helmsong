@@ -6751,7 +6751,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.22.2';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.22.3';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
