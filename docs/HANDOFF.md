@@ -5,7 +5,23 @@
 > is procedural and code-drawn. This doc is a standalone brief so a fresh session
 > can continue with no prior context.
 
-## ⚓ STATE OF THE GAME (2026-07-02 — read this first)
+## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
+
+**THE GAME IS FEATURE-COMPLETE: V1–V16 ALL SHIPPED, at v0.22.2** (~6,970
+lines, git log = full changelog, 46+ commits). Everything below this line in
+the doc is history; the current truth in brief:
+- **V1–V14** (sailing → living ocean → designed world → gunnery/trade/factions
+  /cultures/your-flag) + **V15** (fleet trade routes; hold sieges + war fort
+  flips) + **V16** (ten culture seaboards; NPC hazard parity; relations drift).
+- **Six QA cycles** incl. the four-lens `PLAYTEST_V18.md` (~30 findings, all
+  fixed v0.19.0–v0.19.4). Console clean everywhere; save/load parity verified.
+- **Art:** 100% code-drawn (generated sprites retired twice — house rule);
+  organic silhouettes, tonal terrain outlines.
+- **THE BACKLOG IS EMPTY. The one remaining line item: the PORTFOLIO PASS** —
+  trailer + case study + GitHub Pages deploy (like SWARM/DELVE; the reusable
+  canvas-capture rig lives in the ACES kit, run it from /tmp). Pre-flight:
+  credit the PixelHUDUI pack (indigolay.itch.io) when shipping publicly.
+- Saves were reset at v0.22.0 (world port names changed with the new cultures).
 
 **V1–V14 ARE ALL SHIPPED. The V9→V14 expansion plan is COMPLETE** (see
 `EXPANSION_PLAN.md` — every phase marked ✅). The game has since been hardened by
