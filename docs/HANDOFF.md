@@ -7,6 +7,27 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**NEW TITLE SCREEN (2026-07-07, v0.23.0 — in progress).** Replaced the plain
+dark-gradient intro with an animated **golden-hour parallax title** drawn on the
+game canvas behind the DOM `#intro` overlay (`drawTitleScene`/`titleFrame`,
+loop self-stops when `world.running`). Layers live in `assets/title/`
+(`title_bg` base plate · `title_clouds` drifting pixel clouds · `title_ship`
+bobbing sloop · `logo`), keyed from Flora/Nano-Banana exports (**magenta-bg
+key** for logo+clouds — clean; the earlier checker-bg exports couldn't be keyed
+and were replaced). Procedural sea-shimmer + gulls on top; `TITLE_CLOUDS_CLEAN`
+gates painted vs procedural clouds. **UI matches the game**: logo up top,
+ornate **"Start a new voyage"** button → **"Before you sail"** controls briefing
+(reuses the keybind list + a Settings note) → **Set sail**; 4 gold slot buttons
+along the bottom (same `hud_UI_Slot_Selected` frame/leather/VT323 as in-game),
+version bottom-centre, ⚙ gear (bottom-right) opens the same controls panel as
+reference. Empty slot → briefing → sail; saved slot → resumes; all verified,
+console clean. **PENDING:** optional `title_ship.png` re-export on magenta to
+remove a faint lantern-glow halo (the only interim asset left). Art prompts +
+keying live in the session log. Portfolio pass (trailer/case-study/deploy)
+resumes after the title lands. PixelHUDUI credit moved from the title to the
+controls briefing.
+
+
 **THE GAME IS FEATURE-COMPLETE: V1–V16 ALL SHIPPED, at v0.22.2** (~6,970
 lines, git log = full changelog, 46+ commits). Everything below this line in
 the doc is history; the current truth in brief:
