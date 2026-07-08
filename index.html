@@ -50,7 +50,7 @@
   /* controls / settings screen */
   #controlsScreen { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:24px;
     background:rgba(7,12,20,0.6); transition:opacity .3s ease; }
-  #controlsScreen .cpanel { max-width:560px; width:100%; min-height:452px; display:flex; flex-direction:column; text-align:center; color:var(--paper); padding:30px 34px 26px;
+  #controlsScreen .cpanel { max-width:560px; width:100%; min-height:534px; display:flex; flex-direction:column; text-align:center; color:var(--paper); padding:28px 34px 24px;
     background:linear-gradient(158deg,#3c2c1d 0%,#241610 100%);
     border:20px solid transparent; border-image:url("assets/hud_UI_Slot_Selected.png") 17 / 20px / 0 stretch; image-rendering:pixelated; }
   #controlsScreen h2 { font-family:'VT323',ui-monospace,monospace; color:#f1db97; font-size:30px; letter-spacing:.05em; margin-bottom:16px; }
@@ -62,6 +62,14 @@
   #ctrlDots { display:flex; gap:8px; justify-content:center; margin-top:16px; min-height:10px; }
   #ctrlDots span { width:8px; height:8px; border-radius:50%; background:rgba(233,222,198,0.25); transition:background .15s; }
   #ctrlDots span.on { background:#f1db97; }
+  /* tutorial visual + key chips */
+  #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:132px; border-radius:5px;
+    box-shadow:0 0 0 2px rgba(150,116,62,0.55), 0 4px 12px rgba(0,0,0,0.4); }
+  #ctrlBody .tut-keys { display:flex; gap:5px; align-items:center; justify-content:center; margin-bottom:12px; flex-wrap:wrap; font-size:12px; }
+  #ctrlBody .keycap { font-family:'VT323',ui-monospace,monospace; font-size:15px; line-height:1; color:#241606;
+    background:linear-gradient(#f4e2a6,#cbac62); border-radius:4px; padding:3px 8px 2px; box-shadow:0 2px 0 #6e5427; }
+  #ctrlBody .keylbl { color:#c9b489; margin-right:4px; }
+  #ctrlBody .keysep { color:#7d6c4e; margin:0 3px; }
   #controlsScreen .ctrl-grid { display:grid; grid-template-columns:auto 1fr; gap:9px 18px; text-align:left; font-size:14px; max-width:420px; margin:0 auto 18px; }
   #controlsScreen .ctrl-grid b { color:#f1db97; font-family:'VT323',ui-monospace,monospace; font-size:18px; letter-spacing:.02em; }
   #controlsScreen .ctrl-grid span:nth-child(even) { color:#cbb489; }
@@ -7047,26 +7055,114 @@ const CONTROLS_HTML =
   "<div class=\"ctrl-note\">Rebind keys and adjust sound &amp; graphics anytime from <b>Settings</b> (press <b>O</b> or the ⚙ gear) once you're sailing.</div>";
 const TUTORIAL = [
   { title:'The endless sea', lead:"You've inherited a weathered sloop and an open horizon.",
-    body:"There's no single way to win — <b>trade</b>, <b>fish</b>, <b>fight</b>, and <b>explore</b> to grow rich, earn grander ships, and make your name across ten culture-seaboards. Sail far enough east and the world wraps back on itself; only the polar ice walls you in." },
+    body:"There's no single way to win — <b>trade</b>, <b>fish</b>, <b>fight</b>, and <b>explore</b> to grow rich, earn grander ships, and make your name across ten culture-seaboards. Sail far enough east and the world wraps back on itself; only the polar ice walls you in.",
+    keys:[{cap:'W / S',lbl:'sail'},{cap:'A / D',lbl:'steer'}] },
   { title:'Make your fortune', lead:'Every captain needs coin.',
-    body:"Cast your net over <b>fishing grounds</b> — watch for circling gulls and rippling water. Carry your catch and cargo between ports and sell where it's scarce; every harbour pays differently. Press <b>Space</b> to cast a net, or to dock when a port is near." },
+    body:"Cast your net over <b>fishing grounds</b> — watch for circling gulls and rippling water. Carry your catch and cargo between ports and sell where it's scarce; every harbour pays differently. Press <b>Space</b> to cast a net, or to dock when a port is near.",
+    keys:[{cap:'Space',lbl:'cast net · dock'}] },
   { title:'A grander ship', lead:'Your sloop is only the beginning.',
-    body:"At a port's <b>Shipyard</b>, spend coin to strengthen your hull, add sail and cannons, widen your hold, or buy a whole new class of ship. Some seas — frozen, cursed, weed-choked — gnaw an unfitted hull until you fit the right gear." },
+    body:"At a port's <b>Shipyard</b>, spend coin to strengthen your hull, add sail and cannons, widen your hold, or buy a whole new class of ship. Some seas — frozen, cursed, weed-choked — gnaw an unfitted hull until you fit the right gear.",
+    keys:[{cap:'Space',lbl:'dock, then Shipyard'}] },
   { title:'The sea bites back', lead:'Fair weather never lasts.',
-    body:"Squalls sweep in fast — reef your sail (<b>S</b>) and ride them out, or run before the wind. Night falls often; light your <b>lantern</b> (<b>L</b>) to see, though its glow draws hungry things. Ease off the sail near shoals, reefs, ice, and whirlpools." },
+    body:"Squalls sweep in fast — reef your sail (<b>S</b>) and ride them out, or run before the wind. Night falls often; light your <b>lantern</b> (<b>L</b>) to see, though its glow draws hungry things. Ease off the sail near shoals, reefs, ice, and whirlpools.",
+    keys:[{cap:'S',lbl:'reef'},{cap:'L',lbl:'lantern'}] },
   { title:'Stand your ground', lead:'Pirates and sea-terrors will hunt you.',
-    body:"<b>Click</b> to fire your cannons (aim with the mouse); press <b>R</b> to change shot, and sink your attackers for loot. But fire on peaceful ships and the navy puts a bounty on you — pay it off at any harbour to call them off." },
+    body:"<b>Click</b> to fire your cannons (aim with the mouse); press <b>R</b> to change shot, and sink your attackers for loot. But fire on peaceful ships and the navy puts a bounty on you — pay it off at any harbour to call them off.",
+    keys:[{cap:'Click',lbl:'fire'},{cap:'R',lbl:'swap shot'}] },
   { title:'Chart your course', lead:'The whole sea is yours to read.',
-    body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log. The tide's with you, captain." },
+    body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log. The tide's with you, captain.",
+    keys:[{cap:'M',lbl:'chart'},{cap:'I',lbl:'captain’s log'}] },
 ];
+/* code-drawn looping illustrations for each card (drawn to the card's <canvas>) */
+function tutBG(g,t,w,h){
+  const sky=g.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0,'#274f6a'); sky.addColorStop(0.5,'#6f8a86'); sky.addColorStop(0.66,'#e8b87c'); sky.addColorStop(1,'#cf9560');
+  g.fillStyle=sky; g.fillRect(0,0,w,h);
+  const hy=h*0.6;
+  g.fillStyle='rgba(255,236,190,0.85)'; g.beginPath(); g.arc(w*0.5,hy,11,0,TAU); g.fill();
+  const sea=g.createLinearGradient(0,hy,0,h); sea.addColorStop(0,'#3a6076'); sea.addColorStop(1,'#20465a');
+  g.fillStyle=sea; g.fillRect(0,hy,w,h-hy);
+  g.strokeStyle='rgba(255,246,220,0.14)'; g.lineWidth=1.5;
+  for(let i=0;i<3;i++){ const yy=hy+9+i*11; g.beginPath();
+    for(let x=0;x<=w;x+=6){ const yv=yy+Math.sin(x*0.06+t*1.4+i)*1.5; x?g.lineTo(x,yv):g.moveTo(x,yv);} g.stroke(); }
+}
+function tutShip(g,x,y,s,flip){
+  g.save(); g.translate(x,y); if(flip)g.scale(-1,1);
+  g.strokeStyle='#5a3d22'; g.lineWidth=1.6*s; g.beginPath(); g.moveTo(0,-1*s); g.lineTo(0,-17*s); g.stroke();
+  g.fillStyle='#d9cdb2'; g.beginPath(); g.moveTo(1*s,-16*s); g.quadraticCurveTo(12*s,-9*s,2*s,-3*s); g.closePath(); g.fill();
+  g.fillStyle='#6b4a2c'; g.beginPath(); g.moveTo(-13*s,-1*s); g.quadraticCurveTo(-13*s,6*s,-7*s,7*s); g.lineTo(10*s,7*s); g.quadraticCurveTo(15*s,5*s,16*s,-1*s); g.closePath(); g.fill();
+  g.fillStyle='#4c2f1a'; g.fillRect(-13*s,-2*s,29*s,2*s);
+  g.restore();
+}
+const TUT_VIZ = [
+  function(g,t,w,h){ tutBG(g,t,w,h);                                   // the endless sea: ship sailing past an isle
+    g.fillStyle='rgba(38,66,62,0.7)'; g.beginPath(); g.ellipse(w*0.83,h*0.58,26,8,0,Math.PI,0); g.fill();
+    g.fillStyle='rgba(30,52,50,0.7)'; g.beginPath(); g.ellipse(w*0.16,h*0.585,20,6,0,Math.PI,0); g.fill();
+    tutShip(g,(t*24)%(w+60)-30,h*0.64+Math.sin(t*2)*2,1,false); },
+  function(g,t,w,h){ tutBG(g,t,w,h);                                   // fortune: net over a fishing ground, gulls
+    tutShip(g,w*0.3,h*0.64+Math.sin(t*2)*2,0.9,false);
+    const rx=w*0.66,ry=h*0.72;
+    for(let i=0;i<3;i++){ const rr=(t*15+i*15)%45; g.strokeStyle='rgba(214,238,238,'+(0.45*(1-rr/45))+')'; g.lineWidth=1.5; g.beginPath(); g.ellipse(rx,ry,rr,rr*0.4,0,0,TAU); g.stroke(); }
+    for(let i=0;i<2;i++){ const a=t*1.6+i*Math.PI, gx=rx+Math.cos(a)*20, gy=ry-26+Math.sin(a)*7; g.strokeStyle='rgba(28,40,52,0.75)'; g.lineWidth=1.4; g.beginPath(); g.moveTo(gx-4,gy); g.quadraticCurveTo(gx,gy-3,gx,gy); g.quadraticCurveTo(gx,gy-3,gx+4,gy); g.stroke(); } },
+  function(g,t,w,h){ tutBG(g,t,w,h);                                   // grander ship: small → big, glow
+    tutShip(g,w*0.28,h*0.66+Math.sin(t*2)*1.5,0.68,false);
+    tutShip(g,w*0.72,h*0.63+Math.sin(t*2+1)*1.5,1.25,false);
+    const p=0.5+0.5*Math.sin(t*3); g.fillStyle='rgba(241,219,151,'+(0.45+0.5*p)+')'; g.font='700 18px VT323,monospace'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('➜',w*0.5,h*0.5);
+    for(let i=0;i<3;i++){ const a=t*2+i*2.1; g.fillStyle='rgba(255,240,190,'+(0.4+0.5*Math.sin(t*4+i))+')'; g.beginPath(); g.arc(w*0.72+Math.cos(a)*17,h*0.44+Math.sin(a)*9,1.6,0,TAU); g.fill(); } },
+  function(g,t,w,h){ tutBG(g,t,w,h);                                   // storm: cloud, rain, lightning, ship pitching
+    tutShip(g,w*0.5,h*0.66+Math.sin(t*3)*3,0.9,false);
+    const cx=w*0.5,cy=h*0.23; g.fillStyle='rgba(58,64,76,0.94)';
+    [[-17,1,12],[-2,-4,15],[14,0,13],[3,5,12]].forEach(function(c){g.beginPath();g.arc(cx+c[0],cy+c[1],c[2],0,TAU);g.fill();});
+    g.strokeStyle='rgba(150,180,200,0.5)'; g.lineWidth=1;
+    for(let i=0;i<11;i++){ const rx=cx-26+i*5, ry=cy+13+((t*46+i*9)%(h*0.34)); g.beginPath(); g.moveTo(rx,ry); g.lineTo(rx-1,ry+5); g.stroke(); }
+    if((t%2.3)<0.12){ g.strokeStyle='rgba(255,246,205,0.95)'; g.lineWidth=1.6; g.beginPath(); g.moveTo(cx+5,cy+11); g.lineTo(cx+1,cy+24); g.lineTo(cx+7,cy+24); g.lineTo(cx+2,cy+40); g.stroke(); } },
+  function(g,t,w,h){ tutBG(g,t,w,h);                                   // combat: fire a cannonball at a raider
+    tutShip(g,w*0.23,h*0.64+Math.sin(t*2)*1.5,0.92,false);
+    tutShip(g,w*0.8,h*0.64+Math.sin(t*2+1)*1.5,1,true);
+    const ph=(t%1.6)/1.6, bx=w*0.3+(w*0.5)*ph, by=h*0.54-Math.sin(ph*Math.PI)*22;
+    if(ph<0.9){ g.fillStyle='#15110c'; g.beginPath(); g.arc(bx,by,3,0,TAU); g.fill(); g.fillStyle='rgba(255,220,160,0.5)'; g.beginPath(); g.arc(w*0.3,h*0.55,4,0,TAU); g.fill(); }
+    else { const f=1-(ph-0.9)/0.1; g.fillStyle='rgba(255,200,120,'+f+')'; g.beginPath(); g.arc(w*0.8,h*0.55,4+9*f,0,TAU); g.fill(); } },
+  function(g,t,w,h){                                                   // chart: parchment, route, pulsing waypoint, compass
+    g.fillStyle='#e8dbbe'; g.fillRect(0,0,w,h);
+    g.fillStyle='rgba(120,90,50,0.10)'; for(let i=0;i<44;i++) g.fillRect((i*53)%w,(i*97)%h,2,2);
+    g.fillStyle='rgba(150,170,140,0.5)'; g.beginPath(); g.ellipse(w*0.26,h*0.4,20,12,0,0,TAU); g.fill(); g.beginPath(); g.ellipse(w*0.72,h*0.66,24,14,0,0,TAU); g.fill();
+    g.strokeStyle='rgba(120,80,40,0.8)'; g.lineWidth=1.5; g.setLineDash([4,4]); g.beginPath(); g.moveTo(w*0.26,h*0.4); g.lineTo(w*0.72,h*0.66); g.stroke(); g.setLineDash([]);
+    const p=0.5+0.5*Math.sin(t*3), r=5+p*3; g.strokeStyle='rgba(200,60,50,'+(0.6+0.4*p)+')'; g.lineWidth=2; const wx=w*0.72,wy=h*0.66;
+    g.beginPath(); g.moveTo(wx-r,wy-r); g.lineTo(wx+r,wy+r); g.moveTo(wx+r,wy-r); g.lineTo(wx-r,wy+r); g.stroke();
+    g.strokeStyle='rgba(120,80,40,0.7)'; g.lineWidth=1; g.beginPath(); g.arc(w*0.15,h*0.22,9,0,TAU); g.stroke();
+    g.save(); g.translate(w*0.15,h*0.22); g.rotate(Math.sin(t*0.7)*0.22); g.fillStyle='#b03028'; g.beginPath(); g.moveTo(0,-9); g.lineTo(2.5,0); g.lineTo(-2.5,0); g.closePath(); g.fill(); g.fillStyle='#5a3d22'; g.beginPath(); g.moveTo(0,9); g.lineTo(2.5,0); g.lineTo(-2.5,0); g.closePath(); g.fill(); g.restore();
+  },
+];
+let tutCtx=null, tutDraw=null, tutT=0, tutLast=0;
+function setupTutViz(idx){
+  const cv=document.getElementById('tutCanvas'); if(!cv){ tutCtx=null; tutDraw=null; return; }
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  cv.width=300*dpr; cv.height=132*dpr; tutCtx=cv.getContext('2d'); tutCtx.setTransform(dpr,0,0,dpr,0,0);
+  tutDraw=TUT_VIZ[idx]||null;
+}
+function tutFrame(ts){
+  if(!tutLast) tutLast=ts; const dt=Math.min((ts-tutLast)/1000,0.05); tutLast=ts;
+  if(tutCtx && tutDraw && controlsOpen() && wizVoyage && wizStep>0){ tutT+=dt; try{ tutDraw(tutCtx,tutT,300,132); }catch(e){} }
+  requestAnimationFrame(tutFrame);
+}
+requestAnimationFrame(tutFrame);
 let wizStep = 0, wizVoyage = false;
 function renderWizard(){
   const total = wizVoyage ? 1 + TUTORIAL.length : 1, last = wizStep === total-1;
   document.getElementById('ctrlTitle').textContent =
     wizStep === 0 ? (wizVoyage ? 'Before you sail' : "Ship's controls") : TUTORIAL[wizStep-1].title;
-  document.getElementById('ctrlBody').innerHTML =
-    wizStep === 0 ? CONTROLS_HTML
-                  : '<div class="tut-lead">'+TUTORIAL[wizStep-1].lead+'</div><div class="tut-p">'+TUTORIAL[wizStep-1].body+'</div>';
+  if (wizStep === 0){
+    document.getElementById('ctrlBody').innerHTML = CONTROLS_HTML;
+    tutCtx = null; tutDraw = null;                                    // no viz on the controls step
+  } else {
+    const c = TUTORIAL[wizStep-1];
+    const keysHTML = c.keys.map(k=>'<span class="keycap">'+k.cap+'</span><span class="keylbl">'+k.lbl+'</span>').join('<span class="keysep">·</span>');
+    document.getElementById('ctrlBody').innerHTML =
+      '<canvas id="tutCanvas" class="tut-viz" width="300" height="132"></canvas>' +
+      '<div class="tut-keys">'+keysHTML+'</div>' +
+      '<div class="tut-lead">'+c.lead+'</div><div class="tut-p">'+c.body+'</div>';
+    setupTutViz(wizStep-1);
+  }
   const dots = document.getElementById('ctrlDots');
   dots.style.display = wizVoyage ? '' : 'none';
   if (wizVoyage) dots.innerHTML = Array.from({length:total}, (_,i)=>'<span class="'+(i===wizStep?'on':'')+'"></span>').join('');
