@@ -4505,13 +4505,13 @@ function doSellAll(isl, id) {
 /* port market UI (crisp overlay, mouse-driven) */
 let portButtons = [];
 const mouse = { x:0, y:0 };
-function mkBtn(x,y,w,h,label,action,big){ return {x,y,w,h,label,action,big}; }
+function mkBtn(x,y,w,h,label,action,big,font){ return {x,y,w,h,label,action,big,font}; }
 /* button width sized to its label: text + horizontal padding (px each side) + gold frame */
 const BTN_FRAME = 8;
 function btnW(label, fontPx, padx){ ctx.save(); ctx.font=fnt(fontPx); const tw=Math.ceil(ctx.measureText(label).width); ctx.restore(); return tw + 2*((padx==null?10:padx) + BTN_FRAME); }
 function hit(b){ const mx=mouse.x/US, my=mouse.y/US; return mx>=b.x && mx<=b.x+b.w && my>=b.y && my<=b.y+b.h; }   // buttons live in scaled design space
 function drawBtn(b){
-  brassButton(b.x,b.y,b.w,b.h,b.label,{ hov:hit(b), active:hit(b), font:fnt(b.big?12:11) });
+  brassButton(b.x,b.y,b.w,b.h,b.label,{ hov:hit(b), active:hit(b), font: b.font || fnt(b.big?12:11) });
 }
 function drawTabBtn(b){
   brassButton(b.x,b.y,b.w,b.h,b.label,{ hov:hit(b), active:b.active });
@@ -4572,19 +4572,21 @@ function drawMarketTab(isl, ax, ay, aw){
     ctx.fillText(below > 0 ? '▼  ' + below + ' more below — scroll' : '— end of the ledger —', ax+aw/2, ry);
     ctx.textAlign='left';
   }
-  { // POWDER & SHOT — ammo crates on the dock, riding the same row as Set sail
-    const sy = footY - 47;
-    ctx.textAlign='left'; ctx.font=fntS(9); ctx.fillStyle='rgba(233,222,198,0.5)';
-    ctx.fillText('POWDER & SHOT  (crates of 5 · round shot is free — details on the ammo rack, I)', ax, sy);
+  { // POWDER & SHOT — ammo crates on the dock, riding the same row as Set sail (right)
+    const sy = footY - 54;
+    ctx.textAlign='left'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.6)';
+    ctx.fillText('POWDER & SHOT   ·   crates of 5   ·   round shot is free  (see the ammo rack, I)', ax, sy);
     const ids = Object.keys(AMMO).filter(id => id !== 'round');
+    const region = aw - 214;                                     // reserve the right end of the row for the Set sail button
+    const cell = region / ids.length, bw = Math.min(cell - 12, 104), boxSz = 32, bfont = fnt(9);
     ids.forEach((id, i) => {
-      const x = ax + i*74, ty = sy+14;
-      ctx.fillStyle='rgba(20,12,8,0.85)'; roundRect(x+15, ty, 36, 36, 5); ctx.fill();
-      ctx.strokeStyle='rgba(150,116,62,0.9)'; ctx.lineWidth=1.5; roundRect(x+15, ty, 36, 36, 5); ctx.stroke();
-      drawAmmoIcon(id, x+33, ty+18, 10);
+      const cxc = ax + i*cell + cell/2, ty = sy+20, boxX = Math.round(cxc - boxSz/2);
+      ctx.fillStyle='rgba(20,12,8,0.85)'; roundRect(boxX, ty, boxSz, boxSz, 5); ctx.fill();
+      ctx.strokeStyle='rgba(150,116,62,0.9)'; ctx.lineWidth=1.5; roundRect(boxX, ty, boxSz, boxSz, 5); ctx.stroke();
+      drawAmmoIcon(id, cxc, ty+boxSz/2, 10);
       const own = player.ammo[id]||0;
-      if (own > 0){ ctx.textAlign='right'; ctx.font=fnt(9); ctx.fillStyle='#ffd98a'; ctx.fillText(String(own), x+48, ty+26); }
-      portButtons.push(mkBtn(x, ty+40, 66, 22, '+5 · '+(AMMO[id].cost*5)+'c', ()=>buyAmmo(id)));
+      if (own > 0){ ctx.textAlign='right'; ctx.font=fnt(9); ctx.fillStyle='#ffd98a'; ctx.fillText(String(own), boxX+boxSz-1, ty+boxSz-9); }
+      portButtons.push(mkBtn(Math.round(cxc - bw/2), ty+boxSz+6, bw, 26, '+5 · '+(AMMO[id].cost*5)+'c', ()=>buyAmmo(id), false, bfont));
     });
     ctx.textAlign='left';
   }
@@ -6810,7 +6812,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.23.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.23.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
