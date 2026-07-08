@@ -7,6 +7,24 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🔍 V1.2 ENTITY HOVER INSPECTOR (2026-07-08 — verified, console clean).** Point
+the cursor at any ship or beast → a tooltip reads what it is, its flag, cargo, and
+hull. `drawEntityHover()` (called in `render()` at raw screen coords after the scaled
+HUD block, skipped when any menu/pause is open or on touch): projects each
+enemy/npc/wildlife to screen (`proj()×PIXEL`), picks the nearest within
+`clamp(e.r*VIEW*PIXEL,20,130)` of the mouse, rings it, and draws a `chromePanel`
+tooltip by the cursor with — **name** (`ENT_NAMES` map; named npcs show their
+`shipName`+`captain`; bosses show `mb.name`/'Leviathan of the Deep'), **⚑ faction**
+(`e.fac`→`FACTIONS`, coloured) + **mood** (hostile / navy hunting you / wary /
+neutral / wildlife), **Hold:** a per-type cargo blurb (`entHold` — fisher='the day's
+catch', trader='rich cargo — pearls, spice, silks', merchant, navy, ghost; enemies:
+ships='coin & plunder', monsters='scales & oil'), and a **hull bar**. Per-line
+heights fixed a title/caption overlap. Verified on a named guild trader and a hostile
+Red-Sails dreadnought. **Test gotcha:** never `world.running=false` to freeze a scene
+for a screenshot — that reactivates the title-screen render loop (`titleFrame` runs
+while `!world.running`) and paints over the game; instead keep it running and set the
+entity's `spd`/`speed`=0 + zero velocity (npcs still drift a frame before it takes).
+
 **🎬 V1.2 — REAL FOOTAGE ON THE 3 NEW ONBOARDING CARDS (2026-07-08).** The
 build/siege/conquer cards now play captured **gameplay clips** (`tut_build.mp4`
 3.2s boomerang · `tut_siege.mp4` · `tut_conquer.mp4`, 640×360 h264, matching the

@@ -4153,6 +4153,64 @@ function drawSiegeBar(){
              : 'hold her waters to take the harbour', W/2, y+30);
   ctx.restore();
 }
+/* hover inspector — point at any ship or beast to read what it is, its flag, cargo & hull */
+const ENT_NAMES = { pirate:'Pirate Sloop', raider:'Raider', warship:'Warship', galleon:'Galleon', brig:'Brig',
+  corsair:'Corsair', dread:'Dreadnought', ghost:'Ghost Ship', serpent:'Sea Serpent', deepmaw:'Deepmaw',
+  kraken:'Kraken', angler:'Anglerfish', jelly:'Jelly Bloom', fisher:'Fishing Boat', merchant:'Merchantman',
+  trader:'Trade Carrack', patrol:'Navy Patrol', manowar:'Man-o-War',
+  whale:'Whale', shark:'Shark', dolphin:'Dolphins', turtle:'Sea Turtle', sprite:'Sea Sprite' };
+function entName(e, isNpc){
+  if (isNpc){ return (e.named && e.shipName) ? e.shipName : (ENT_NAMES[e.type] || 'Ship'); }
+  if (e.boss) return 'Leviathan of the Deep';
+  if (e.miniboss) return e.mb ? e.mb.name : 'Sea Terror';
+  return ENT_NAMES[e.type] || 'Foe';
+}
+function entHold(e, isNpc){
+  if (isNpc){
+    if (e.type==='fisher') return 'the day’s catch';
+    if (e.type==='trader') return 'rich cargo — pearls, spice, silks';
+    if (e.type==='merchant') return 'trade goods — cloth, rum';
+    if (e.navy) return 'a naval crew — scant plunder';
+    if (e.ghost) return 'a spectral, cursed hold';
+    return 'sundry goods';
+  }
+  if (e.boss || e.miniboss) return 'scales, oil & rare spoils';
+  if (e.ship) return 'coin & plunder';
+  return 'scales & oil';
+}
+function drawEntityHover(){
+  if (ui.port||ui.inv||ui.mapOpen||ui.hold||ui.build||ui.settings||ui.paused||ui.naming||ship.sinking||showTouchUI) return;
+  const mx=mouse.x, my=mouse.y;
+  let best=null, bd=1e9, isNpc=false, isWild=false;
+  const test=(arr, np, wild)=>{ for (const e of arr){ if (e.dead || (wild && e.type==='birds')) continue;
+    const p=proj(e.x,e.y,6), sx=p[0]*PIXEL, sy=p[1]*PIXEL, rad=clamp((e.r||24)*VIEW*PIXEL, 20, 130);
+    const d=Math.hypot(mx-sx,my-sy); if (d<rad && d<bd){ bd=d; best=e; isNpc=np; isWild=wild; } } };
+  test(enemies,false,false); test(npcs,true,false); test(wildlife,false,true);
+  if (!best) return;
+  const e=best, p=proj(e.x,e.y,6), sx=p[0]*PIXEL, sy=p[1]*PIXEL, rr=clamp((e.r||24)*VIEW*PIXEL, 18, 120);
+  ctx.save();
+  ctx.strokeStyle='rgba(255,236,190,0.7)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(sx, sy, rr, rr*0.66, 0, 0, TAU); ctx.stroke();
+  const fac = isWild ? null : (e.fac || (isNpc?facOfNpc(e):facOfEnemy(e))), F = fac?FACTIONS[fac]:null;
+  const mood = isWild ? 'a creature of the sea'
+             : (!isNpc ? 'hostile' : (e.hostile ? (e.navy?'navy — hunting you':'hostile') : ((e.warned||e.provoked)?'wary of you':'neutral · leave her be')));
+  const lines=[];
+  lines.push({ t: entName(e, isNpc), c:'#f4ead0', f:fnt(12), h:19 });
+  if (isNpc && e.captain) lines.push({ t:e.captain, c:'rgba(233,222,198,0.62)', f:fntS(10), h:15 });
+  if (F) lines.push({ t:'⚑ '+F.name+'  ·  '+mood, c:F.col, f:fntS(10), h:15 });
+  else lines.push({ t:mood, c:'rgba(159,209,232,0.72)', f:fntS(10), h:15 });
+  if (!isWild) lines.push({ t:'Hold: '+entHold(e,isNpc), c:'rgba(233,222,198,0.6)', f:fntS(10), h:15 });
+  let w=0, txtH=0; for (const L of lines){ ctx.font=L.f; w=Math.max(w, ctx.measureText(L.t).width); txtH+=L.h; }
+  const padX=11, padY=8, hpH=isWild?0:11;
+  const boxW=w+padX*2, boxH=txtH+padY*2+hpH;
+  const bx=clamp(mx+18, 8, W-boxW-8), by=clamp(my+16, 8, H-boxH-8);
+  chromePanel(bx,by,boxW,boxH,{r:6,fw:2});
+  let ly=by+padY; ctx.textAlign='left'; ctx.textBaseline='top';
+  for (const L of lines){ ctx.font=L.f; ctx.fillStyle=L.c; ctx.fillText(L.t, bx+padX, ly); ly+=L.h; }
+  if (!isWild){ const bw=boxW-padX*2, hpFrac=clamp((e.hp||0)/(e.maxhp||1),0,1);
+    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx+padX, ly+2, bw, 6);
+    ctx.fillStyle = hpFrac>0.5?'#9ad17a':hpFrac>0.25?'#e8c47a':'#d64a30'; ctx.fillRect(bx+padX, ly+2, bw*hpFrac, 6); }
+  ctx.restore();
+}
 function drawTouchUI(){
   ctx.save();
   const jx = touch.joyId>=0 ? touch.jcx : 94, jy = touch.joyId>=0 ? touch.jcy : H-214;   // idle ghost sits clear of the compass (v0.22.2)
@@ -7311,6 +7369,7 @@ function render() {
   if (ui.naming) drawNaming();
   drawStatusWidget();                    // coin · hold · ship — above everything, always
   W=_W; H=_H; ctx.restore();
+  drawEntityHover();                                            // point at a ship/beast → who they are, flag, cargo, hull
   if (showTouchUI && !ui.port && !ui.mapOpen) drawTouchUI();   // touch controls use raw screen coords → unscaled
 }
 let saveThrottle = 0;
