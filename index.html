@@ -6812,7 +6812,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.23.2';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.23.3';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6952,28 +6952,6 @@ const titleGulls = [];
 for (let i=0;i<5;i++) titleGulls.push({ x:(i*0.21+0.08)%1, y:0.13+((i*0.37)%1)*0.20, spd:0.010+(i%3)*0.006, ph:i*1.3, sc:0.65+(i%3)*0.3 });
 let titleT = 0, titleLast = 0;
 
-// Pre-bake a small cloud tile ONCE: downscale with smoothing, then feather the
-// left/right edges to transparent. Tiling this with overlapping cross-fades and a
-// 1:1 blit means no bilinear edge-fade and no visible seam at any drift offset.
-let cloudTile = null;
-function buildCloudTile(){
-  const img = TIMG.clouds;
-  const TW = Math.round(img.width*0.47), TH = Math.round(img.height*0.47);   // "small clouds" size
-  const c = document.createElement('canvas'); c.width = TW; c.height = TH;
-  const cc = c.getContext('2d'); cc.imageSmoothingEnabled = true;
-  cc.drawImage(img, 0, 0, TW, TH);
-  const F = Math.round(TW*0.12);                                             // feather width (also the tile overlap)
-  // erase the left/right edges to transparent with a gradient (destination-out) —
-  // pure canvas ops, NO getImageData, so a cross-origin/file:// image can't taint-fail this.
-  cc.globalCompositeOperation = 'destination-out';
-  let gl = cc.createLinearGradient(0,0,F,0); gl.addColorStop(0,'rgba(0,0,0,1)'); gl.addColorStop(1,'rgba(0,0,0,0)');
-  cc.fillStyle = gl; cc.fillRect(0, 0, F, TH);
-  let gr = cc.createLinearGradient(TW-F,0,TW,0); gr.addColorStop(0,'rgba(0,0,0,0)'); gr.addColorStop(1,'rgba(0,0,0,1)');
-  cc.fillStyle = gr; cc.fillRect(TW-F, 0, F, TH);
-  cc.globalCompositeOperation = 'source-over';
-  c._F = F; cloudTile = c;
-}
-
 function drawTitleScene(){
   const g = ctx, w = W, h = H;
   g.save(); g.imageSmoothingEnabled = true;
@@ -6987,18 +6965,13 @@ function drawTitleScene(){
     sk.addColorStop(0,'#1d3a56'); sk.addColorStop(0.5,'#3a5a72'); sk.addColorStop(0.62,'#e8b979'); sk.addColorStop(1,'#2b586a');
     g.fillStyle = sk; g.fillRect(0,0,w,h);
   }
-  // --- clouds: painted layer (once clean) or procedural puffs ---
+  // --- clouds: one painted layer that scales with the screen and gently sways.
+  //     No tiling → no seam, no ghost, no fixed-size "tiny on big monitors" problem. ---
   if (TIMG.clouds && TITLE_CLOUDS_CLEAN){
-    if (!cloudTile) buildCloudTile();
-    const cv = cloudTile, TW = cv.width, TH = cv.height, F = cv._F;
-    const step = TW - F;                                                 // overlap neighbours by F → feathered edges cross-fade
-    const dy = Math.round(h*0.40 - TH*0.72 + Math.sin(titleT*0.03)*4);   // band above the ocean horizon (~0.5h)
-    const scroll = titleT*7;                                             // continuous drift
-    const i0 = Math.floor(scroll/step) - 1, i1 = Math.floor((scroll+w)/step) + 1;
-    const sm = g.imageSmoothingEnabled; g.imageSmoothingEnabled = false; // 1:1 blit — no bilinear edge fade
-    g.globalAlpha = 0.95;
-    for (let idx = i0; idx <= i1; idx++) g.drawImage(cv, Math.round(idx*step - scroll), dy);
-    g.globalAlpha = 1; g.imageSmoothingEnabled = sm;
+    const img = TIMG.clouds, cw = w*1.12, ch = img.height*cw/img.width;     // covers the width (+margin), scales with the display
+    const cx = -(cw-w)/2 + Math.sin(titleT*0.045)*(cw-w)*0.5;               // slow horizontal sway inside the margin
+    const cy = Math.round(h*0.44 - ch*0.60 + Math.sin(titleT*0.03)*4);      // band held above the ocean horizon (~0.5h)
+    g.globalAlpha = 0.95; g.drawImage(img, Math.round(cx), cy, cw, ch); g.globalAlpha = 1;
   } else {
     for (let i=0;i<6;i++){
       const cx = (((i*0.618 + titleT*0.004*(0.6+(i%3)*0.35)) % 1.25) - 0.12) * w;
