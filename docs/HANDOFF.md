@@ -7,6 +7,35 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🏗 V1.2 FOUND-YOUR-OWN SETTLEMENTS (2026-07-08 — extends the build system,
+verified via `__HS` + real-reload persistence, console clean).** Two asks: an
+approach indicator for buildable islands, and the ability to found **harbours/
+settlements** (not just forts) on empty land.
+- **Approach indicator** — `drawGuides` now flags the nearest bare buildable island
+  within 1300u with a green world marker/arrow **'⚒ empty island — build here'**
+  (`nearBuildSite(range)` is now range-parametrised; scans ⌈range/CHUNK⌉ chunks).
+- **Build menu** — Space at a buildable island opens `drawBuildMenu` (`ui.build`,
+  `buildButtons`, gated/Esc-chained like `ui.hold`) instead of instantly building.
+  Two options with tooltips + costs: **⚓ Found a Harbour (1500c)** · **⚒ Raise a
+  Fort (1200c)** — each shown only if not already built there (`buildOptions(isl)`:
+  bare real land holding nothing that isn't yours → which of harbour/fort are free).
+- **Founding a harbour** (`buildHarbour` → `makeHarbourPort`) synthesizes a real
+  `isl.port` (name you type via the naming dialog `kind:'settlement'`, deterministic
+  pier/dock from island pos, `portProfile` market, unique seed salted `^0x5E77`);
+  registers it in `portOwners` (so it's 'you'-faction, taxed, discounted, counts
+  toward fleet cap) AND `builtPorts` (islKey→port). Fully dockable/tradeable
+  immediately — verified market renders with culture+region auto-derived, header
+  reads 'Your Banner · your harbour'. You can then also raise a fort on it (a
+  fortified settlement, +2 fleet cap).
+- **Persistence** — `player.settlements` saves the port geometry; `rebuildBuiltPorts`
+  restores `builtPorts` + their `portOwners` records on load and **clears
+  `chunkCache`** so `genChunk` re-injects `isl.port` into the island (a founded
+  harbour survives a real page reload — verified: continued from slot, still owned +
+  dockable). Founded harbours are `built:true` → excluded from reprisal targeting
+  (no former owner to retake them) and from the `ports` save (saved via settlements).
+  Debug: `__HS.buildHere('harbour'|'fort')/buildHarbour/buildOptions/nearBuildSite/
+  builtPorts/openBuildMenu`.
+
 **⚔ V1.2 HARBOUR CONQUEST (2026-07-08 — new system, verified via `__HS`, console
 clean; `GAME_VERSION='1.2'`).** You can now take populated harbours by force. Design
 was user-chosen (blockade-&-battle · all harbours capturable · all four rewards ·

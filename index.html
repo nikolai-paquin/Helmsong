@@ -320,6 +320,7 @@ function genChunk(cx, cy) {
         profile: portProfile(wc, cy), seed: ((wc*92821) ^ (cy*53987)) >>> 0,
       };
     }
+    if (!islObj.port && builtPorts.size && builtPorts.has(islObj.key)) islObj.port = builtPorts.get(islObj.key);   // a harbour you founded here (V1.2)
     islands.push(islObj);
     // satellite islets & sea-stack rocks scattered on the island's shelf (refs: lighthouse outcrops)
     if (r > 90) {
@@ -743,19 +744,55 @@ function claimRuin(nf){
    no existing fort). Your first becomes your stronghold; each one after flies
    your banner, auto-defends its waters, and widens your fleet cap. This is the
    path to an empire when there's no ruin to claim. ---- */
-const OUTPOST_COST = 1200;
-function nearBuildSite(){
+const OUTPOST_COST = 1200, HARBOUR_COST = 1500;
+const builtPorts = new Map();   // islKey → port object — harbours YOU founded on empty islands (persisted via player.settlements)
+// what you may raise on an island: bare real land that holds nothing but your own works
+function buildOptions(isl){
+  if (isl.rock || isl.continent || isl.r < 120) return [];
+  if (isl.port && !isMyPort(isl)) return [];                 // someone else's town — conquer it, don't build over it
+  const fdef = fortOf(isl);
+  if (fdef && fortStateOf(isl).owner !== 'player') return [];// someone else's fort — raze/claim it
+  const opts = [];
+  if (!isl.port) opts.push('harbour');
+  if (!fdef)     opts.push('fort');
+  return opts;
+}
+function nearBuildSite(range=300){
+  const cr = Math.max(1, Math.ceil(range/CHUNK));
   const cx = Math.floor(ship.x/CHUNK), cy = Math.floor(ship.y/CHUNK);
-  let best = null, bd = 300;
-  for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++)
+  let best = null, bd = range;
+  for (let dy=-cr;dy<=cr;dy++) for (let dx=-cr;dx<=cr;dx++)
     for (const isl of genChunk(cx+dx, cy+dy).islands){
-      if (isl.rock || isl.continent || isl.port || isl.r < 120) continue;   // needs bare, real land
-      if (fortOf(isl)) continue;                                            // already fortified (incl. one you built)
+      if (!buildOptions(isl).length) continue;
       const ang = Math.atan2(ship.y-isl.y, ship.x-isl.x);
       const edge = Math.hypot(isl.x-ship.x, isl.y-ship.y) - islandRadiusAt(isl, ang);
       if (edge > 8 && edge < bd){ bd = edge; best = isl; }                  // near the shore, not aground
     }
   return best;
+}
+// found a real, dockable harbour town on a bare island — trade, tribute, your banner
+function makeHarbourPort(isl, name){
+  const pa = hash2(Math.round(isl.x), Math.round(isl.y), 51) * TAU;
+  const rEdge = islandRadiusAt(isl, pa), cx = Math.floor(isl.x/CHUNK), cy = Math.floor(isl.y/CHUNK);
+  return { name, ang: pa,
+    pierX: isl.x + Math.cos(pa)*rEdge,        pierY: isl.y + Math.sin(pa)*rEdge,
+    dockX: isl.x + Math.cos(pa)*(rEdge + 26), dockY: isl.y + Math.sin(pa)*(rEdge + 26),
+    profile: portProfile(cx, cy), seed: ((Math.round(isl.x)*92821) ^ (Math.round(isl.y)*53987) ^ 0x5E77) >>> 0, built: true };
+}
+function buildHarbour(isl, name){
+  if (player.coin < HARBOUR_COST){ setToast('A harbour here costs '+HARBOUR_COST+' coin — you lack it'); return; }
+  if (isl.port){ setToast('This island already has a harbour'); return; }
+  name = (name||'').trim() || portName(Math.floor(isl.x/CHUNK), Math.floor(isl.y/CHUNK));
+  const port = makeHarbourPort(isl, name);
+  isl.port = port; builtPorts.set(islKeyOf(isl), port);
+  portOwners.set(port.seed, { seed: port.seed, from: 'free', x: port.dockX, y: port.dockY, name, tax: 0, since: world.elapsed, built: true });
+  player.coin -= HARBOUR_COST; SFX.horn(); addShake(3);
+  setToast('⚓ '+name+' is founded — your own harbour, flying your banner! Dock to trade and gather her tribute.');
+}
+function rebuildBuiltPorts(){   // restore founded harbours from the save so they dock, render & persist
+  builtPorts.clear();
+  for (const p of (player.settlements||[])){ if (p && p.key) builtPorts.set(p.key, p); }
+  if (builtPorts.size) chunkCache.clear();   // any chunk cached before this repopulates with its founded harbour on next gen
 }
 function buildOutpost(isl){
   if (player.coin < OUTPOST_COST){ setToast('An outpost here costs '+OUTPOST_COST+' coin — you lack it'); return; }
@@ -894,7 +931,9 @@ function stepReprisals(dt){
     if (reprisalCd <= 0){
       reprisalCd = 360 + Math.random()*360;
       if (truceActive()) return;
-      const recs = [...portOwners.values()], rec = recs[Math.floor(Math.random()*recs.length)];
+      const recs = [...portOwners.values()].filter(r=>!r.built);   // founded harbours have no former owner to retake them
+      if (!recs.length) return;
+      const rec = recs[Math.floor(Math.random()*recs.length)];
       reprisal = { seed: rec.seed, rec, t: 200, spawned: false };
       setToast('⚔ The '+FACTIONS[rec.from].adj+' move to retake '+rec.name+' — make sail and defend her!', true);
     }
@@ -1131,7 +1170,7 @@ const player = {
   cosUnlocked: { hull:[0], sail:[0], trim:[0], emblem:[0] },
   quest: { step:0, done:false }, hasHeart: false,
   shipClass: 'sloop', shipsOwned: ['sloop'], boatName: '',
-  ammo: {}, ammoSel: 'round', ledger: {}, rep: {}, fleet: [], hold: null, built: [], vault: {},
+  ammo: {}, ammoSel: 'round', ledger: {}, rep: {}, fleet: [], hold: null, built: [], settlements: [], vault: {},
   loreFound: [], flotsamTaken: [],
   notoriety: 0, bounty: 0, journeys: {}, achievements: [], sighted: [],
 };
@@ -2087,7 +2126,7 @@ const keys = {};
 // can't leave a movement key "stuck" — e.g. a stuck reef key would pin the sail at 0
 // and make W feel dead. Genuinely-held keys re-assert via OS key-repeat next frame.
 function clearKeys(){ for (const kk in keys) keys[kk] = false; }
-function toggleMap(){ if (ui.port || ui.hold) return; ui.mapOpen = !ui.mapOpen; ui.zoomEdit = null; SFX.map(); if (ui.mapOpen){ mapWorldView = false; mapRange = 9000; ui.inv = false; } clearKeys(); }   // always open in local mode
+function toggleMap(){ if (ui.port || ui.hold || ui.build) return; ui.mapOpen = !ui.mapOpen; ui.zoomEdit = null; SFX.map(); if (ui.mapOpen){ mapWorldView = false; mapRange = 9000; ui.inv = false; } clearKeys(); }   // always open in local mode
 window.addEventListener('blur', clearKeys);
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -2132,7 +2171,7 @@ window.addEventListener('keydown', e => {
   if (k === bindK.lantern && world.running) toggleLantern();
   if (k === bindK.ammo && world.running && !ship.sinking) cycleAmmo();
   if (k === 'o' && world.running){ ui.settings = true; clearKeys(); }
-  if (k === 'escape'){ if (ui.inv) ui.inv = false; else if (ui.port) closePort(); else if (ui.mapOpen) ui.mapOpen = false; else if (ui.hold) ui.hold = false; else { ui.paused = !ui.paused; ui.pauseConfirm = false; } clearKeys(); }
+  if (k === 'escape'){ if (ui.build) ui.build = null; else if (ui.inv) ui.inv = false; else if (ui.port) closePort(); else if (ui.mapOpen) ui.mapOpen = false; else if (ui.hold) ui.hold = false; else { ui.paused = !ui.paused; ui.pauseConfirm = false; } clearKeys(); }
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY;
@@ -2157,6 +2196,7 @@ canvas.addEventListener('mousedown', e => {
   if (ui.mapOpen){ mapClick(mouse.x/US, mouse.y/US); return; }
   if (ui.inv){ for (const b of invButtons){ if (hit(b)){ SFX.click(); b.action(); break; } } return; }
   if (ui.hold){ for (const b of holdButtons){ if (hit(b)){ SFX.click(); b.action(); break; } } return; }
+  if (ui.build){ for (const b of buildButtons){ if (hit(b)){ SFX.click(); b.action(); break; } } return; }
   if (ui.port){ for (const b of portButtons){ if (hit(b)){ SFX.click(); b.action(); break; } } }
   else if (world.running && !ship.sinking){
     // the action bar is a real control surface — clicks on it never fire the cannon
@@ -3146,7 +3186,7 @@ function drawOverlays() {
 }
 
 /* ------------------------------- HUD (crisp) ----------------------------- */
-const ui = { mapOpen: false, port: null, portTab: 'market', settings: false, rebind: null, paused: false, pauseConfirm: false, naming: null, inv: false, invTab: 'hold', hold: false };
+const ui = { mapOpen: false, port: null, portTab: 'market', settings: false, rebind: null, paused: false, pauseConfirm: false, naming: null, inv: false, invTab: 'hold', hold: false, build: null };
 function roundRect(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
 function bar(x,y,w,h,v,color){ ctx.fillStyle='rgba(0,0,0,0.3)'; roundRect(x,y,w,h,3); ctx.fill(); ctx.fillStyle=color; roundRect(x,y,Math.max(2,w*clamp(v,0,1)),h,3); ctx.fill(); }
 
@@ -3941,6 +3981,11 @@ function openNaming(first){
 }
 function christen(){
   const nm = (ui.naming.text||'').trim();
+  if (ui.naming.kind === 'settlement'){
+    const isl = ui.naming.isl; ui.naming = null; clearKeys();
+    if (isl) buildHarbour(isl, nm);
+    return;
+  }
   if (ui.naming.kind === 'faction'){
     const name = nm || 'the Free Banner';
     player.banner = { name, col: FACTIONS.you.col };
@@ -3966,13 +4011,17 @@ function drawNaming(){
   const pw = 560, ph = 230, px = (W-pw)/2, py = (H-ph)/2;
   chromePanel(px,py,pw,ph,{r:10,fw:5,rivets:true});
   ctx.textAlign='center'; ctx.textBaseline='middle';
+  const noThe = ui.naming.kind==='faction' || ui.naming.kind==='settlement';
   ctx.fillStyle='#ffd98a'; ctx.font=fnt(16);
-  ctx.fillText(ui.naming.kind==='faction' ? 'NAME YOUR BANNER' : ui.naming.first ? 'CHRISTEN YOUR VESSEL' : 'RENAME YOUR VESSEL', W/2, py+42);
+  ctx.fillText(ui.naming.kind==='faction' ? 'NAME YOUR BANNER' : ui.naming.kind==='settlement' ? 'NAME YOUR SETTLEMENT' : ui.naming.first ? 'CHRISTEN YOUR VESSEL' : 'RENAME YOUR VESSEL', W/2, py+42);
   const blink = (world.elapsed*2|0)%2===0 ? '_' : ' ';
-  ctx.fillStyle='#f4ead0'; ctx.font=fnt(20); ctx.fillText((ui.naming.kind==='faction' ? '' : 'the ') + ui.naming.text + blink, W/2, py+96);
+  ctx.fillStyle='#f4ead0'; ctx.font=fnt(20); ctx.fillText((noThe ? '' : 'the ') + ui.naming.text + blink, W/2, py+96);
   ctx.fillStyle='rgba(233,222,198,0.55)'; ctx.font=fntS(11);
-  ctx.fillText(ui.naming.first ? 'type a name · Enter or Esc to christen her · rename later at any Shipyard' : 'type a name · Enter to christen · Esc to keep the old name', W/2, py+132);
-  const bw = btnW('Christen', 12, 14), b = mkBtn(W/2-bw/2, py+ph-58, bw, 34, 'Christen', christen, true);
+  ctx.fillText(ui.naming.kind==='settlement' ? 'type a name for your new harbour · Enter to found it · Esc to cancel'
+             : ui.naming.first ? 'type a name · Enter or Esc to christen her · rename later at any Shipyard'
+             : 'type a name · Enter to christen · Esc to keep the old name', W/2, py+132);
+  const blbl = ui.naming.kind==='settlement' ? 'Found it' : 'Christen';
+  const bw = btnW(blbl, 12, 14), b = mkBtn(W/2-bw/2, py+ph-58, bw, 34, blbl, christen, true);
   nameButtons.push(b); drawBtn(b);
   ctx.restore();
 }
@@ -4012,6 +4061,9 @@ function drawGuides(){
   if (waypoint) drawGuide(waypoint.x, waypoint.y, 'rgba(120,240,220,0.9)', 'Waypoint');
   if (war && Math.hypot(war.x-ship.x, war.y-ship.y) < 6000) drawGuide(war.x, war.y, 'rgba(232,120,90,0.9)', '⚔ contested waters');
   if (player.hold){ const hd = holdDist(ship.x, ship.y); if (hd > 400 && hd < 7000) drawGuide(holdNearestX(), player.hold.y, 'rgba(255,217,138,0.9)', '⌂ stronghold'); }
+  { const site = nearBuildSite(1300);   // a bare island you could settle — flag it as you sail up
+    if (site){ const a = Math.atan2(ship.y-site.y, ship.x-site.x), r = islandRadiusAt(site, a) + 40;
+      drawGuide(site.x + Math.cos(a)*r, site.y + Math.sin(a)*r, 'rgba(150,220,150,0.9)', '⚒ empty island — build here'); } }
   if (harbourSiege){ const hx = harbourSiege.x + Math.round((ship.x - harbourSiege.x)/WORLD_W)*WORLD_W; drawGuide(hx, harbourSiege.y, 'rgba(232,120,90,0.95)', '⚔ '+harbourSiege.name); }
   if (reprisal && reprisal.rec){ const rx = reprisal.rec.x + Math.round((ship.x - reprisal.rec.x)/WORLD_W)*WORLD_W; if (Math.hypot(rx-ship.x, reprisal.rec.y-ship.y) < 9000) drawGuide(rx, reprisal.rec.y, 'rgba(232,120,90,0.95)', '⚔ defend '+reprisal.rec.name); }
 }
@@ -4325,7 +4377,7 @@ function drawHUD() {
       else if (cap) msg = 'Space to hail ' + cap.captain;
       else if (ruin) msg = '⚑  Space to claim the ruin  ·  800c';
       else if (player.hold && holdDist(ship.x, ship.y) < 280) msg = '⌂  Space to enter your stronghold';
-      else if (nearBuildSite()) msg = '⚒  Space to raise an outpost here  ·  '+OUTPOST_COST+'c';
+      else if (nearBuildSite()) msg = '⚒  Space to build here  ·  harbour or fort';
       else { const ga = groundAt(ship.x, ship.y);
         const town = (!harbourSiege) ? nearbyPortWithin(520) : null;   // a harbour you could put to the sword
         msg = (town && !isMyPort(town)) ? 'Space to cast net  ·  ⚔ fire on '+town.port.name+' to lay siege'
@@ -4737,7 +4789,7 @@ function closePort(){
   clearKeys();
 }
 function handleAction() {
-  if (ui.mapOpen || ui.port || ui.hold) return;
+  if (ui.mapOpen || ui.port || ui.hold || ui.build) return;
   const dock = nearbyDock();
   if (dock){ openPort(dock); return; }
   const cap = nearestNamedNpc();
@@ -4746,7 +4798,7 @@ function handleAction() {
   if (ruin){ claimRuin(ruin); return; }
   if (player.hold && holdDist(ship.x, ship.y) < 280){ openHold(); return; }
   const site = nearBuildSite();
-  if (site){ buildOutpost(site); return; }
+  if (site){ openBuildMenu(site); return; }
   toggleFishing();
 }
 function doBuy(isl, id) {
@@ -5367,6 +5419,45 @@ function drawHold(){
     holdButtons.push(b); }
   for (const b of holdButtons){ if (!b.noDraw) drawBtn(b); }
   drawButtonTip(holdButtons);
+  ctx.restore();
+}
+/* build menu — raise a harbour and/or a fort on a bare island you've sailed up to (V1.2) */
+let buildButtons = [];
+function openBuildMenu(isl){ ui.build = isl; ship.vx = ship.vy = 0; fishing.active = false; clearKeys(); }
+function drawBuildMenu(){
+  buildButtons = [];
+  const isl = ui.build; if (!isl) return;
+  const opts = buildOptions(isl);
+  if (!opts.length){ ui.build = null; return; }                 // nothing left to raise here
+  ctx.save();
+  ctx.fillStyle='rgba(8,16,26,0.72)'; ctx.fillRect(0,0,W,H);
+  const pw = Math.min(600, W-24), ph = Math.min(340, H-24), px = (W-pw)/2, py = (H-ph)/2;
+  chromePanel(px,py,pw,ph,{r:10,fw:5,rivets:true});
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillStyle=FACTIONS.you.col; ctx.font=fnt(16); ctx.fillText('BUILD ON THIS ISLAND', px+40, py+26);
+  ctx.fillStyle='rgba(233,222,198,0.55)'; ctx.font=fntS(11);
+  ctx.fillText('bare land, and yours to settle — raise what you will and fly your banner over it', px+40, py+54);
+  const ax = px+40, rowW = pw-80;
+  let ry = py+92;
+  const row = (label, desc, cost, enabled, action, tip) => {
+    ctx.font=fnt(14); ctx.fillStyle = enabled ? '#e9dec6' : 'rgba(233,222,198,0.4)'; ctx.textAlign='left';
+    ctx.fillText(label, ax, ry+4);
+    ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText(desc, ax, ry+27);
+    if (enabled){ const canPay = player.coin >= cost; const w = btnW(cost+'c',12,12);
+      const b = mkBtn(ax+rowW-w, ry, w, 32, cost+'c', action); b.tip = tip; buildButtons.push(b);
+      if (!canPay){ ctx.textAlign='right'; ctx.font=fntS(9); ctx.fillStyle='rgba(232,145,107,0.8)'; ctx.fillText('need coin', ax+rowW-w-10, ry+10); ctx.textAlign='left'; } }
+    else { ctx.textAlign='right'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.4)'; ctx.fillText('already raised here', ax+rowW, ry+9); ctx.textAlign='left'; }
+    ry += 66;
+  };
+  row('⚓  Found a Harbour', 'a settlement you can dock at, trade at, and tax — your own port town', HARBOUR_COST, opts.includes('harbour'),
+      () => { const i = ui.build; ui.build = null; ui.naming = { text:'', kind:'settlement', isl:i }; clearKeys(); },
+      'Raise a harbour town: dock to trade at your own market, gather its tribute, and count it among your holdings (grows your fleet). You name it.');
+  row('⚒  Raise a Fort', player.hold ? 'a stronghold whose guns defend these waters' : 'your first stronghold — store goods, found your banner, guard the seas', OUTPOST_COST, opts.includes('fort'),
+      () => { const i = ui.build; ui.build = null; buildOutpost(i); },
+      'Raise a keep: its cannon auto-defend the waters against your enemies, and it widens your fleet. Your first fort becomes your stronghold.');
+  { const w = btnW('Close  (Esc)',11,10); buildButtons.push(mkBtn(px+pw-40-w, py+ph-52, w, 32, 'Close  (Esc)', ()=>{ ui.build=null; clearKeys(); })); }
+  for (const b of buildButtons) if (!b.noDraw) drawBtn(b);
+  drawButtonTip(buildButtons);
   ctx.restore();
 }
 /* the price ledger — its own full-width tab (port + captain's screens) */
@@ -7023,11 +7114,11 @@ const world = { elapsed: 0, running: false, last: 0, acc: 0 };
 const STEP = 1/60;
 function update(dt) {
   world.elapsed += dt; stepTime(dt); stepWind(dt); stepWeather(dt);
-  if (ui.mapOpen || ui.port || ui.settings || ui.naming || ui.inv || ui.hold || ship.sinking) stepShipDrift(dt); else stepShip(dt);
+  if (ui.mapOpen || ui.port || ui.settings || ui.naming || ui.inv || ui.hold || ui.build || ship.sinking) stepShipDrift(dt); else stepShip(dt);
   stepFishing(dt);
   stepFleetRoutes(dt);                                        // routed traders sail even while you're docked (v0.20)
   stepHarbours(dt);                                           // your harbours pay tribute even while you're away (V1.2)
-  if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepSieges(dt); stepHarbourSiege(dt); stepReprisals(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
+  if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold && !ui.build){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepSieges(dt); stepHarbourSiege(dt); stepReprisals(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
   stepFx(dt); stepDanger(dt); stepEvents(dt); stepNotoriety(dt); stepAudio(dt);
   achT -= dt; if (achT <= 0){ achT = 1; checkAch(); }
   updateCam(dt);
@@ -7112,6 +7203,7 @@ function render() {
   if (ui.port) drawPort();
   if (ui.inv) drawInventory();          // the captain's screens draw over the port when both are open
   if (ui.hold && !ui.port) drawHold();
+  if (ui.build) drawBuildMenu();
   if (ui.settings) drawSettings();
   if (ui.paused && !ui.settings) drawPause();
   if (ui.naming) drawNaming();
@@ -7161,7 +7253,8 @@ function saveGame() {
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
     forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0, e.fac||0]),
     fleet: player.fleet, hold: player.hold, built: player.built||[], vault: player.vault,
-    ports: [...portOwners.values()].map(r=>({seed:r.seed, from:r.from, x:Math.round(r.x), y:Math.round(r.y), name:r.name, tax:Math.round(r.tax||0), fortKey:r.fortKey||0})),
+    ports: [...portOwners.values()].filter(r=>!r.built).map(r=>({seed:r.seed, from:r.from, x:Math.round(r.x), y:Math.round(r.y), name:r.name, tax:Math.round(r.tax||0), fortKey:r.fortKey||0})),
+    settlements: [...builtPorts.entries()].map(([k,p])=>({key:k, name:p.name, ang:p.ang, pierX:p.pierX, pierY:p.pierY, dockX:p.dockX, dockY:p.dockY, profile:p.profile, seed:p.seed, built:true, tax:Math.round((portOwners.get(p.seed)||{}).tax||0)})),
     banner: player.banner||null, truce: player.truce||0, pact: !!player.pact, bossCd: player.bossCd||0, bossCds: player.bossCds||{},
     wx: weather.base, wseq: weather.seq, wtimer: Math.round(weather.timer), wstorm: weather.state==='storm' ? 1 : 0,
     war: war ? { x: Math.round(war.x), y: Math.round(war.y), r: war.r, t: Math.round(war.t) } : null,
@@ -7194,6 +7287,8 @@ function loadGame() {
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
     player.hold = s.hold || null; player.built = s.built || []; rebuildBuiltForts(); player.vault = s.vault || {};
     portOwners.clear(); (s.ports||[]).forEach(r=>portOwners.set(r.seed, { seed:r.seed, from:r.from, x:r.x, y:r.y, name:r.name, tax:r.tax||0, since:0, ...(r.fortKey?{fortKey:r.fortKey}:{}) }));
+    player.settlements = s.settlements || []; rebuildBuiltPorts();   // founded harbours: rebuild builtPorts + their ownership record
+    (player.settlements).forEach(p=>portOwners.set(p.seed, { seed:p.seed, from:'free', x:p.dockX, y:p.dockY, name:p.name, tax:p.tax||0, since:0, built:true }));
     player.banner = s.banner || null; player.truce = s.truce || 0; player.pact = !!s.pact; player.bossCd = s.bossCd || 0; player.bossCds = s.bossCds || {};
     if (s.wx){ weather.base = s.wx; weather.state = s.wx; weather.seq = s.wseq||0; weather.timer = s.wtimer||20; }   // forecasts survive a reload (v0.19.4)
     if (s.war && s.war.t > 0) war = { x:s.war.x, y:s.war.y, r:s.war.r, t:s.war.t, skirmishT:0.5 };
@@ -7481,6 +7576,8 @@ window.__HS = {
   siegePort(isl){ isl = isl || nearbyPortWithin(3000); if (isl) startHarbourSiege(isl); return isl && isl.port.name; },
   seizePort(isl){ isl = isl || nearbyPortWithin(3000); if (isl) seizePort(isl); return isl && isl.port.name; },
   forceReprisal(){ reprisalCd = 0.01; }, myPorts(){ return [...portOwners.values()]; },
+  builtPorts, buildOptions, nearBuildSite, buildHarbour, buildOutpost, openBuildMenu,
+  buildHere(kind){ const isl = nearBuildSite(3000); if (!isl) return 'no bare island near'; if (kind==='fort') buildOutpost(isl); else buildHarbour(isl, kind==='harbour'?null:kind); return isl.key; },
   fortState, nearestFort(){ let best=null,bd=1e9; const cx=Math.floor(ship.x/CHUNK),cy=Math.floor(ship.y/CHUNK);
     for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++)for(const isl of genChunk(cx+dx,cy+dy).islands){
       if(!fortOf(isl)) continue; const d=Math.hypot(isl.x-ship.x,isl.y-ship.y); if(d<bd){bd=d;best=isl;}}
