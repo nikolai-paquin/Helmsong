@@ -65,8 +65,6 @@
   /* tutorial visual + key chips */
   #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:169px; border-radius:5px; object-fit:cover; background:#22485c;
     box-shadow:0 0 0 2px rgba(150,116,62,0.55), 0 4px 12px rgba(0,0,0,0.4); }
-  #ctrlBody .tut-emblem { overflow:hidden; }
-  #ctrlBody .tut-emblem svg { display:block; width:100%; height:100%; }
   #ctrlBody .tut-keys { display:flex; gap:5px; align-items:center; justify-content:center; margin-bottom:12px; flex-wrap:wrap; font-size:12px; }
   #ctrlBody .keycap { font-family:'VT323',ui-monospace,monospace; font-size:15px; line-height:1; color:#241606;
     background:linear-gradient(#f4e2a6,#cbac62); border-radius:4px; padding:3px 8px 2px; box-shadow:0 2px 0 #6e5427; }
@@ -7298,6 +7296,7 @@ function render() {
   ctx.clearRect(0,0,W,H);
   ctx.drawImage(buf, 0,0,BW,BH, 0,0,BW*PIXEL,BH*PIXEL); // exact integer upscale = crisp uniform pixels
   flushSprites();                                        // custom sprites drawn crisp on top of the chunky world
+  if (window.__CAP) return;                              // capture mode — clean HUD-free world footage (tutorial clips)
   drawLootFx();                                          // rising pickup labels — world-anchored, full res
   drawGuides();                                          // world-anchored edge arrows — drawn at full res (unscaled)
   // HUD + menus are drawn in a scaled "design space" (UW×UH) so they grow with resolution
@@ -7589,16 +7588,13 @@ const TUTORIAL = [
   { title:'Chart your course', clip:'chart', lead:'The whole sea is yours to read.',
     body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log.",
     keys:[{cap:'M',lbl:'chart'},{cap:'I',lbl:'captain’s log'}] },
-  { title:'Raise your own holdings', lead:'Bare islands are yours to settle.',
-    emblem:'<svg viewBox="0 0 300 169" preserveAspectRatio="xMidYMid meet"><rect width="300" height="169" fill="#22485c"/><path d="M0 118 Q75 108 150 116 T300 116 V169 H0 Z" fill="#1b3a4b"/><path d="M60 122 Q95 78 150 80 Q210 82 244 122 Z" fill="#3f6b48"/><path d="M60 122 Q95 78 150 80 Q210 82 244 122" fill="none" stroke="#2c4c33" stroke-width="2"/><path d="M96 122 Q100 100 116 100 L128 100 Q132 122 132 122 Z" fill="#8a6a3c"/><rect x="104" y="86" width="20" height="20" fill="#9a7742"/><path d="M104 86 L114 74 L124 86 Z" fill="#6f4f29"/><line x1="150" y1="86" x2="150" y2="44" stroke="#e8dcc0" stroke-width="3"/><path d="M150 47 L190 57 L150 67 Z" fill="#f1db97"/><circle cx="150" cy="44" r="3" fill="#f1db97"/></svg>',
+  { title:'Raise your own holdings', clip:'build', lead:'Bare islands are yours to settle.',
     body:"Sail right up to an <b>empty island</b> and press <b>Space</b> to build: found a <b>harbour</b> — your own port town to dock, trade, and gather tribute — or raise a <b>fort</b> whose guns guard the waters. Each holding you raise lets you lead a larger fleet.",
     keys:[{cap:'Space',lbl:'build on bare land'}] },
-  { title:'Take a harbour by force', lead:'Any town can be made yours.',
-    emblem:'<svg viewBox="0 0 300 169" preserveAspectRatio="xMidYMid meet"><rect width="300" height="169" fill="#22485c"/><path d="M0 122 Q75 114 150 120 T300 120 V169 H0 Z" fill="#1b3a4b"/><g fill="#8a6a3c" stroke="#5f4526" stroke-width="2"><rect x="176" y="70" width="52" height="52"/><rect x="172" y="60" width="12" height="12"/><rect x="192" y="60" width="12" height="12"/><rect x="212" y="60" width="12" height="12"/></g><rect x="196" y="92" width="14" height="30" fill="#3a2c18"/><path d="M50 120 Q110 20 176 72" fill="none" stroke="#f1db97" stroke-width="2" stroke-dasharray="5 5" opacity="0.85"/><circle cx="52" cy="120" r="7" fill="#2a2018" stroke="#e8916b" stroke-width="2"/><g stroke="#f5b25a" stroke-width="3" stroke-linecap="round"><line x1="180" y1="74" x2="168" y2="62"/><line x1="184" y1="70" x2="196" y2="58"/><line x1="182" y1="80" x2="170" y2="82"/></g><circle cx="182" cy="74" r="9" fill="none" stroke="#e8765a" stroke-width="2" opacity="0.8"/></svg>',
+  { title:'Take a harbour by force', clip:'siege', lead:'Any town can be made yours.',
     body:"<b>Fire on a harbour</b> to lay siege. Sink the defenders it sorties and shell the town to break its garrison — <b>raze its fort first</b> if it has one. Hold the waters until it strikes its colours, and it flies <b>your banner</b>: trade, tribute, and a bigger fleet.",
     keys:[{cap:'Click',lbl:'fire on the town'}] },
-  { title:'Forts & your banner', lead:'Empire is won at the cannon’s mouth.',
-    emblem:'<svg viewBox="0 0 300 169" preserveAspectRatio="xMidYMid meet"><rect width="300" height="169" fill="#22485c"/><path d="M0 128 Q75 120 150 126 T300 126 V169 H0 Z" fill="#1b3a4b"/><g fill="#7f6238" stroke="#57401f" stroke-width="2"><rect x="96" y="78" width="108" height="50"/><rect x="90" y="66" width="16" height="16"/><rect x="116" y="66" width="16" height="16"/><rect x="142" y="66" width="16" height="16"/><rect x="168" y="66" width="16" height="16"/><rect x="194" y="66" width="16" height="16"/></g><rect x="140" y="98" width="20" height="30" fill="#3a2c18"/><line x1="150" y1="66" x2="150" y2="24" stroke="#e8dcc0" stroke-width="3"/><path d="M150 27 L196 34 L188 44 L196 54 L150 47 Z" fill="#ffd98a" stroke="#c9a24b" stroke-width="1.5"/></svg>',
+  { title:'Forts & your banner', clip:'conquer', lead:'Empire is won at the cannon’s mouth.',
     body:"Sink an enemy <b>fort</b> to a ruin, then press <b>Space</b> to <b>claim</b> it — or build your own. At a stronghold, <b>raise your banner</b> to found your faction. Your holdings fly your flag and defend their seas, but the dispossessed will come to <b>retake</b> them — answer the call.",
     keys:[{cap:'Space',lbl:'claim a ruin'},{cap:'I',lbl:'your holdings'}] },
 ];
@@ -7612,9 +7608,7 @@ function renderWizard(){
   } else {
     const c = TUTORIAL[wizStep-1];
     const keysHTML = c.keys.map(k=>'<span class="keycap">'+k.cap+'</span><span class="keylbl">'+k.lbl+'</span>').join('<span class="keysep">·</span>');
-    const viz = c.emblem
-      ? '<div class="tut-viz tut-emblem">'+c.emblem+'</div>'
-      : '<video class="tut-viz" src="assets/title/tut/tut_'+c.clip+'.mp4?v='+GAME_VERSION+'" autoplay loop muted playsinline></video>';
+    const viz = '<video class="tut-viz" src="assets/title/tut/tut_'+c.clip+'.mp4?v='+GAME_VERSION+'" autoplay loop muted playsinline></video>';
     document.getElementById('ctrlBody').innerHTML =
       viz +
       '<div class="tut-keys">'+keysHTML+'</div>' +

@@ -7,6 +7,38 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🎬 V1.2 — REAL FOOTAGE ON THE 3 NEW ONBOARDING CARDS (2026-07-08).** The
+build/siege/conquer cards now play captured **gameplay clips** (`tut_build.mp4`
+3.2s boomerang · `tut_siege.mp4` · `tut_conquer.mp4`, 640×360 h264, matching the
+other six) instead of the interim SVG emblems. TUTORIAL entries use `clip:` again;
+`renderWizard` reverted to video-only; emblem CSS removed. **How they were captured
+(reusable pipeline — the browser can't POST cross-origin, but CAN write to disk when
+served same-origin with the capserver):**
+1. Added a 1-line capture gate in `render()`: `if (window.__CAP) return;` right
+   after the world-buffer blit + `flushSprites()` → the main canvas holds clean
+   **HUD-free** world footage (no HUD/guides/beacons). Harmless in normal play
+   (`__CAP` is never set). Kept in the shipping code for future captures.
+2. Ran the game from the **`helmsongcap`** launch config (capserver.py serving
+   `/tmp/helmsong-cap` on :8809, which also accepts `POST /save?name=&dir=`). Copied
+   `index.html` + `assets/` there so it's same-origin → the page's `fetch('/save…')`
+   writes frames to `/tmp/helmsong-cap/frames/<clip>/`.
+3. Capture harness (run via `preview_eval`): set `world.running=false` (stops the
+   rAF loop → manual control), staged a scene (`__HS.teleport`/`buildOutpost`/
+   `spawnType`/`setZoom`), then per frame: `update(1/60);update(1/60)` (advance sim) →
+   **override `cam.x/cam.y` to a FIXED point** (render follows the ship otherwise) →
+   `render()` → `drawImage(canvas→640×360)` → `toBlob('image/jpeg',0.9)`; collected
+   blobs then `Promise.all` POSTed them (per-frame await was ~0.8s/frame and blew the
+   30s eval timeout — but the browser finishes the loop after the tool times out, so
+   just re-check the frame count on disk). ~42–48 frames each.
+4. ffmpeg (`~/ffmpeg-bin/ffmpeg`): frames→mp4 at `-framerate 30 -pix_fmt yuv420p`;
+   **boomerang** the calm build clip (`[0]reverse[r];[0][r]concat`), **plain loop**
+   the combat clips (matches the 'combat=plain' convention). Copied the 3 mp4s to
+   `assets/title/tut/` (Desktop + /tmp/helmsong-preview + /tmp/helmsong-cap).
+Verified: all three cards load `readyState 4` 640×360 no-error and show the footage
+(they don't autoplay in the *preview* tab — background-media power-saving pauses
+video-only elements; they autoplay fine in a real browser, same as the other six).
+To recapture/add clips: re-run steps 2–4; the `__CAP` gate + capserver config persist.
+
 **🏴 V1.2 HOLDINGS VISIBILITY + REALM MENU (2026-07-08 — verified, console clean).**
 Owned strongholds/ports were hard to spot and track; now:
 - **Enumeration:** `ownedHoldings()` unifies forts (fortState `owner:'player'`, hp>0)
