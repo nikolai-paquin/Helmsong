@@ -25,12 +25,15 @@ loop via `landAt`). **QA test gotchas (not bugs):** clear `portDefense` between 
 tests (a drained g=0 garrison persists → instant re-seize, no waves); pin the ship
 near a besieged town or it drifts >2400u and the siege breaks by design; align
 `ship.heading` to `wind.dir` (wind uses `.dir/.strength`, NOT `.x/.y` — the latter
-gave NaN velocity and triggered the crash above). **Watch items (by design, flag for
-tuning):** shoal damage can sink a stock sloop crossing a wide reef at full sail
-(~27dps + up to 30 crunch — the requested "dangerous"); `player.settlements` is a
-derived-at-save field (stale during live play, self-corrects on save — don't read it
-live, use `builtPorts`); the restored SFX re-fattened `assets/` (re-compress before a
-Pages deploy).
+gave NaN velocity and triggered the crash above). **Watch items — RESOLVED (2026-07-08):**
+shoal damage **softened** (reef mult 0.19→0.15, sandbar 0.28→0.22, crunch caps
+30→22 / 42→30) so a full-hull sloop survives a fast reef crossing (~35–50 hp lost)
+instead of a guaranteed sink — still very dangerous, fatal if already damaged;
+`player.settlements` now **kept live-accurate** (`buildHarbour` pushes to it, not
+just derived at save — save still derives from `builtPorts` so no double-count).
+The SFX-size item is a **non-issue for the actual deploy path** (GitHub Desktop
+Publish / PAT push has no 100-file web-uploader limit; 32MB is fine for git) — NOT
+re-compressed, since that would lossily degrade the user's own audio for no benefit.
 
 **🔍 V1.2 HOVER INSPECTOR — v2 (2026-07-08).** Roomier tooltips (shared
 `drawInfoTip(lines,hpFrac,sx,sy,ringR)` with padX15/padY13 + per-line heights),
