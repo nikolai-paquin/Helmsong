@@ -6205,6 +6205,8 @@ function loadSfx(){
 const SFX_GAIN = 0.42;                                         // one knob for the whole file set — Suno masters run hot
 function playSfx(name, vol=1){                                 // true if a real file played
   if (AUDIO.muted) return false;
+  if (!isFinite(vol) || vol < 0) vol = 0;                     // never feed a non-finite value to an AudioParam
+  vol = Math.min(vol, 4);
   const pool = SFXB[name];
   if (AUDIO.started && pool && pool.length){
     if (AUDIO.ctx.state === 'suspended') AUDIO.ctx.resume();
@@ -6817,7 +6819,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.25.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '1.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();

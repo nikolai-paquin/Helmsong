@@ -7,6 +7,18 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🚢 V1.0 — LAUNCH-READY (2026-07-07).** Stamped `GAME_VERSION='1.0'` (title
+reads "Helmsong v1.0"). Ship-readiness pass done: console clean across title /
+gameplay / combat+audio / all port tabs / captain's screens / chart / settings /
+pause; save+load verified (stamps v1.0); every referenced asset present (hud,
+title art, 6 onboarding clips, 9 music + 47 sfx); no absolute paths (only the
+Google-Fonts CDN, with offline fallbacks) so it deploys under any subpath; added
+a non-finite guard in `playSfx` (an edge-case AudioParam throw). Unreferenced
+extras on disk (ghost-ship sprites, future sfx) are intentional, not loaded.
+User deploys via GitHub (drag-drop `index.html` + `assets/` to the repo root,
+enable Pages). Portfolio pass (trailer/case-study) is the only thing left after
+launch — the onboarding capture rig in `/tmp/helmsong-cap` is the trailer rig.
+
 **NEW TITLE SCREEN (2026-07-07, v0.23.0 — in progress).** Replaced the plain
 dark-gradient intro with an animated **golden-hour parallax title** drawn on the
 game canvas behind the DOM `#intro` overlay (`drawTitleScene`/`titleFrame`,
