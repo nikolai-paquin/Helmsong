@@ -421,6 +421,7 @@ function flowAt(wx, wy){
 }
 
 function islandRadiusAt(isl, ang) {
+  if (!isl.pts || !isl.pts.length || !isFinite(ang)) return isl.r || 0;   // degrade gracefully, never crash landAt on bad input
   let a = ((ang % TAU) + TAU) % TAU;
   const N = isl.pts.length, fi = a / TAU * N;
   const i0 = Math.floor(fi) % N, i1 = (i0 + 1) % N, t = fi - Math.floor(fi);

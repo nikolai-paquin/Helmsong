@@ -7,6 +7,31 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**✅ V1.2 FULL QA PASS (2026-07-08 — every session feature exercised via `__HS`;
+all systems PASS, 1 hardening fix applied, console clean).** Verified: V1.1 fixes
+(WANTED fits 200/218px · escorts hit quarry+enemies+hostile-npcs but not neutrals ·
+trade income 228/leg · fleetCap 2→3 per hold · pathfinding hysteresis · shoal 27dps@
+cruise+crunch · chain-shot buffer loaded · cruise speed 172, no regression) · Harbour
+conquest (warning→siege→defender waves→garrison drain→fort-gate floors 30%→razed→0→
+control→seize→faction 'you'/0.9-1.12 pricing/tax/cap · reprisals hold+revert ·
+founded-harbours excluded · save/load) · Settlements (build menu, dockable+tradeable
+founded harbour, opts narrow harbour→fort, indicator shows ≤360u/hidden beyond,
+save/load) · Holdings (ownedHoldings dedups a seized port's own fort, all positioned;
+Realm tab + Track) · Onboarding (9 cards, build/siege/conquer clips) · Comprehensive
+save/load (outpost+founded harbour+conquered port+banner+fleet all persist, cap 6).
+**Fix applied:** `islandRadiusAt` now guards `!isl.pts || !isFinite(ang)` → returns
+`isl.r` instead of throwing (a NaN ship coord would otherwise hard-crash the frame
+loop via `landAt`). **QA test gotchas (not bugs):** clear `portDefense` between siege
+tests (a drained g=0 garrison persists → instant re-seize, no waves); pin the ship
+near a besieged town or it drifts >2400u and the siege breaks by design; align
+`ship.heading` to `wind.dir` (wind uses `.dir/.strength`, NOT `.x/.y` — the latter
+gave NaN velocity and triggered the crash above). **Watch items (by design, flag for
+tuning):** shoal damage can sink a stock sloop crossing a wide reef at full sail
+(~27dps + up to 30 crunch — the requested "dangerous"); `player.settlements` is a
+derived-at-save field (stale during live play, self-corrects on save — don't read it
+live, use `builtPorts`); the restored SFX re-fattened `assets/` (re-compress before a
+Pages deploy).
+
 **🔍 V1.2 HOVER INSPECTOR — v2 (2026-07-08).** Roomier tooltips (shared
 `drawInfoTip(lines,hpFrac,sx,sy,ringR)` with padX15/padY13 + per-line heights),
 now covers **harbours & forts** too, and **stands down in combat**. Structure pass
