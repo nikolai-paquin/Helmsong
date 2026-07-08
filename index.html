@@ -50,7 +50,7 @@
   /* controls / settings screen */
   #controlsScreen { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:24px;
     background:rgba(7,12,20,0.6); transition:opacity .3s ease; }
-  #controlsScreen .cpanel { max-width:560px; width:100%; min-height:534px; display:flex; flex-direction:column; text-align:center; color:var(--paper); padding:28px 34px 24px;
+  #controlsScreen .cpanel { max-width:560px; width:100%; min-height:572px; display:flex; flex-direction:column; text-align:center; color:var(--paper); padding:28px 34px 24px;
     background:linear-gradient(158deg,#3c2c1d 0%,#241610 100%);
     border:20px solid transparent; border-image:url("assets/hud_UI_Slot_Selected.png") 17 / 20px / 0 stretch; image-rendering:pixelated; }
   #controlsScreen h2 { font-family:'VT323',ui-monospace,monospace; color:#f1db97; font-size:30px; letter-spacing:.05em; margin-bottom:16px; }
@@ -63,7 +63,7 @@
   #ctrlDots span { width:8px; height:8px; border-radius:50%; background:rgba(233,222,198,0.25); transition:background .15s; }
   #ctrlDots span.on { background:#f1db97; }
   /* tutorial visual + key chips */
-  #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:132px; border-radius:5px; object-fit:cover; background:#22485c;
+  #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:169px; border-radius:5px; object-fit:cover; background:#22485c;
     box-shadow:0 0 0 2px rgba(150,116,62,0.55), 0 4px 12px rgba(0,0,0,0.4); }
   #ctrlBody .tut-keys { display:flex; gap:5px; align-items:center; justify-content:center; margin-bottom:12px; flex-wrap:wrap; font-size:12px; }
   #ctrlBody .keycap { font-family:'VT323',ui-monospace,monospace; font-size:15px; line-height:1; color:#241606;
@@ -6817,7 +6817,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.25.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.25.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
