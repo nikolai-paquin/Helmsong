@@ -7,6 +7,36 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🏴 V1.2 HOLDINGS VISIBILITY + REALM MENU (2026-07-08 — verified, console clean).**
+Owned strongholds/ports were hard to spot and track; now:
+- **Enumeration:** `ownedHoldings()` unifies forts (fortState `owner:'player'`, hp>0)
+  + ports (`portOwners`). Forts now store `px,py` on the state entry when claimed/
+  built/seized (persisted as fields 7–8 of the `forts` save tuple) so they're
+  locatable. A seized harbour's own fort is deduped out by `rec.fortKey` (the port
+  row covers it). Fort label = 'Stronghold' (== `player.hold.key`) else 'Outpost'.
+- **World beacon** (`drawHoldingBeacon`): a floating banner-flag + name in your
+  colours over each holding on-screen (bobs), an edge-arrow toward it when off; the
+  old single `⌂ stronghold` guide is replaced by a loop over the nearest ≤6 holdings
+  (60–7000u) in `drawGuides`.
+- **Chart highlight** (`drawHoldingMark`, `hexA` helper): a pulsing banner-flag
+  marker + label drawn LIVE (not baked — ownership is runtime) over every holding on
+  both the local and world charts, before the player marker. Distinct from the plain
+  faction dots the cached chart already tints.
+- **Realm tab** (captain's screens, new `['realm','Realm']` between Ledger &
+  Factions): `drawRealmTab` lists every holding sorted by distance — icon (⚑ port /
+  ⌂ fort), name, type ('founded harbour · fortified' / 'stronghold' / 'outpost'),
+  bearing+distance (`bearingArrow`/`fmtDist`), and per-row status: ports show pending
+  tribute (or '⚔ under siege/attack' when `harbourSiege`/`reprisal` targets that
+  seed), forts show a walls hp bar. A header tribute-total banner + fleet-cap count;
+  each row has a **Track** button → drops a waypoint on it and closes the screen to
+  steer there. Empty state explains the three ways to gain ground. `drawButtonTip`
+  now runs in `drawInventory` too (Track tooltip). Debug: `__HS.ownedHoldings()`.
+  All three verified via `__HS` (chart + Realm screenshotted clean; world beacon
+  confirmed; Track sets waypoint). **Harness note:** the stale-capture screenshot
+  quirk was bad this session — world screenshots came back half-rendered though
+  page dims read 1280×720/DPR2; centered-UI captures (chart/menus) were clean;
+  `preview_stop`+`start` sometimes re-pairs, sometimes not.
+
 **✨ V1.2 UI POLISH + ONBOARDING CARDS (2026-07-08 — feedback pass, verified,
 console clean).** Three fixes from the user's screenshots:
 - **Build-menu overlap fixed** — descriptions ran under the cost buttons. Panel

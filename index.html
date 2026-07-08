@@ -738,6 +738,7 @@ function claimRuin(nf){
   if (player.coin < COST){ setToast('The ruin can be yours for '+COST+' coin — you lack it'); return; }
   player.coin -= COST; SFX.horn(); addShake(3);
   nf.st.owner = 'player'; nf.st.hp = nf.f.max; nf.st.maxHp = nf.f.max; nf.st.dead = 0; nf.st.aggroT = 0;
+  nf.st.px = nf.f.px; nf.st.py = nf.f.py;                       // remember where it stands, for holdings tracking
   if (!player.hold) player.hold = { key: nf.f.key, x: nf.f.px, y: nf.f.py };
   setToast(player.hold && player.hold.key===nf.f.key ? 'The ruin is rebuilt under your banner — your stronghold stands!'
                                                       : 'The ruin flies your colours — another outpost joins your holdings');
@@ -804,7 +805,7 @@ function buildOutpost(isl){
   builtForts.set(bk, def); isl.fortDef = def;
   player.built = player.built || [];
   player.built.push({ k:bk, px:Math.round(def.px), py:Math.round(def.py), max:def.max });
-  fortState.set(key, { hp:def.max, maxHp:def.max, aggroT:0, fireT:2, sortieT:0, dead:0, owner:'player' });
+  fortState.set(key, { hp:def.max, maxHp:def.max, aggroT:0, fireT:2, sortieT:0, dead:0, owner:'player', px:def.px, py:def.py });
   player.coin -= OUTPOST_COST; SFX.horn(); addShake(3);
   if (!player.hold){ player.hold = { key, x:def.px, y:def.py };
     setToast('You raise an outpost — your first stronghold stands! Enter it to store goods and found a banner.'); }
@@ -882,7 +883,7 @@ function seizePort(isl){
   const seed = isl.port.seed, from = portBaseFac(isl);
   const rec = { seed, from, x: isl.port.dockX, y: isl.port.dockY, name: isl.port.name, tax: 0, since: world.elapsed };
   const fort = fortOf(isl);
-  if (fort){ const st = fortStateOf(isl); st.owner = 'player'; st.hp = fort.max; st.maxHp = fort.max; st.dead = 0; st.aggroT = 0; rec.fortKey = fort.key; }
+  if (fort){ const fp = fortPos(isl); const st = fortStateOf(isl); st.owner = 'player'; st.hp = fort.max; st.maxHp = fort.max; st.dead = 0; st.aggroT = 0; st.px = fp.px; st.py = fp.py; rec.fortKey = fort.key; }
   portOwners.set(seed, rec);
   harbourSiege = null;
   repAdj(from, -12);
@@ -962,6 +963,19 @@ function stepReprisals(dt){
   }
 }
 function ownedPortCount(){ let n = 0; for (const rec of portOwners.values()) if (!rec.fortKey) n++; return n; }   // fortified harbours already count via playerFortCount
+function hexA(h, a){ return 'rgba('+parseInt(h.slice(1,3),16)+','+parseInt(h.slice(3,5),16)+','+parseInt(h.slice(5,7),16)+','+a+')'; }
+function fortLabel(key){ return player.hold && player.hold.key === key ? 'Stronghold' : 'Outpost'; }
+// every scrap of ground under your banner — forts (strongholds/outposts) + harbours (seized or founded)
+function ownedHoldings(){
+  const out = [], ports = [...portOwners.values()];
+  const portForts = new Set(); for (const p of ports) if (p.fortKey) portForts.add(p.fortKey);   // a seized harbour's own fort — the port entry covers it
+  fortState.forEach((st, key) => {
+    if (st.owner !== 'player' || st.hp <= 0 || st.px == null || portForts.has(key)) return;
+    out.push({ kind:'fort', key, name: fortLabel(key), x: st.px, y: st.py, hp: st.hp, maxHp: st.maxHp || 380 });
+  });
+  for (const rec of ports) out.push({ kind:'port', key:'pt'+rec.seed, seed: rec.seed, name: rec.name, x: rec.x, y: rec.y, tax: rec.tax || 0, built: !!rec.built, fortified: !!rec.fortKey });
+  return out;
+}
 // tribute — your harbours pay into the coffers on a slow timer (V1.2, "passive tax income")
 let taxRemitT = 90;
 function stepHarbours(dt){
@@ -3483,6 +3497,17 @@ function drawWpMark(px,py){   // pulsing cyan crosshair
   ctx.moveTo(px,py-8); ctx.lineTo(px,py-2); ctx.moveTo(px,py+2); ctx.lineTo(px,py+8);
   ctx.stroke();
 }
+// your holding on the chart — a pulsing banner-flag marker in your colours (+ label on the open chart)
+function drawHoldingMark(sx, sy, name){
+  const col = FACTIONS.you ? FACTIONS.you.col : '#ffd98a', t = 0.5+0.5*Math.sin(world.elapsed*4);
+  ctx.save();
+  ctx.strokeStyle=hexA(col, 0.3+0.5*t); ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(sx,sy,7,0,TAU); ctx.stroke();
+  ctx.strokeStyle=col; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(sx, sy+4); ctx.lineTo(sx, sy-6); ctx.stroke();
+  ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(sx, sy-6); ctx.lineTo(sx+7, sy-4); ctx.lineTo(sx, sy-1.5); ctx.closePath(); ctx.fill();
+  if (name){ ctx.font=fntS(9); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.lineJoin='round'; ctx.lineWidth=2.5;
+    ctx.strokeStyle='rgba(10,18,26,0.85)'; ctx.strokeText(name, sx, sy+7); ctx.fillStyle=col; ctx.fillText(name, sx, sy+7); }
+  ctx.restore();
+}
 
 // The world is fixed, so render its chart once to an offscreen canvas and cache it.
 let _worldChart = null;
@@ -3768,6 +3793,10 @@ function drawLocalChart(mx,my,size,open){
     const ix=clamp(ctr.x+wrapDX(c.tx, ship.x)*scale, mx+4, mx+size-4), iy=clamp(ctr.y+(c.ty-ship.y)*scale, my+4, my+size-4);
     ctx.fillStyle='#7ec8ff'; ctx.beginPath(); ctx.moveTo(ix,iy-4); ctx.lineTo(ix+4,iy); ctx.lineTo(ix,iy+4); ctx.lineTo(ix-4,iy); ctx.closePath(); ctx.fill();
   }
+  for (const h of ownedHoldings()){                                    // your banner over every holding on the chart
+    const gdx=wrapDX(h.x, ship.x); if (Math.hypot(gdx, h.y-ship.y) > range*0.95) continue;
+    drawHoldingMark(clamp(ctr.x+gdx*scale, mx+6, mx+size-6), clamp(ctr.y+(h.y-ship.y)*scale, my+6, my+size-6), open ? h.name : null);
+  }
   if (waypoint) drawWpMark(clamp(ctr.x+(waypoint.x-ship.x)*scale, mx+5, mx+size-5), clamp(ctr.y+(waypoint.y-ship.y)*scale, my+5, my+size-5));
   if (open){                                                           // pulsing halo — you, unmistakably
     ctx.strokeStyle=`rgba(255,217,138,${0.45+0.45*Math.sin(world.elapsed*4)})`; ctx.lineWidth=1.5;
@@ -3828,6 +3857,7 @@ function drawWorldChart(mx,my,size){
       ctx.fillText('no contested waters at present — wars flare and fade', dx+dw-8, Math.max(dy+12, my+76)); ctx.textAlign='center'; }
   }
   for (const c of player.contracts) if (c.kind==='deliver'){ const p=wpx(((c.tx % WORLD_W)+WORLD_W)%WORLD_W, c.ty); ctx.fillStyle='#7ec8ff'; ctx.beginPath(); ctx.moveTo(p[0],p[1]-4); ctx.lineTo(p[0]+4,p[1]); ctx.lineTo(p[0],p[1]+4); ctx.lineTo(p[0]-4,p[1]); ctx.closePath(); ctx.fill(); }
+  for (const h of ownedHoldings()){ const q=wpx(((h.x % WORLD_W)+WORLD_W)%WORLD_W, h.y); drawHoldingMark(q[0], q[1], h.name); }   // your banner across the world
   if (waypoint){ const q=wpx(waypoint.x, waypoint.y); drawWpMark(q[0], q[1]); }
   const p=wpx(ship.x,ship.y);
   ctx.strokeStyle=`rgba(255,217,138,${0.5+0.5*Math.sin(world.elapsed*4)})`; ctx.lineWidth=1.5;
@@ -4054,6 +4084,31 @@ function drawGuide(wx, wy, color, label){
   }
   ctx.restore();
 }
+// a floating banner over one of your holdings (on-screen) or an edge arrow toward it (off-screen)
+function drawHoldingBeacon(h){
+  const hx = h.x + Math.round((ship.x - h.x)/WORLD_W)*WORLD_W;
+  const p = proj(hx, h.y, 55); let sx = p[0]*PIXEL, sy = p[1]*PIXEL;
+  const col = FACTIONS.you ? FACTIONS.you.col : '#ffd98a', m = 44;
+  const on = sx>m && sx<W-m && sy>m && sy<H-m;
+  const glyph = h.kind==='port' ? '⚑ ' : '⌂ ';
+  ctx.save();
+  if (on){
+    sy += Math.sin(world.elapsed*2 + h.x*0.01)*2;                       // gentle bob
+    ctx.strokeStyle='rgba(16,12,7,0.75)'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy-24); ctx.stroke();
+    ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy-24); ctx.stroke();
+    ctx.fillStyle=col; ctx.beginPath(); ctx.moveTo(sx, sy-24); ctx.lineTo(sx+16, sy-20); ctx.lineTo(sx, sy-14); ctx.closePath(); ctx.fill();
+    ctx.font=fnt(10); const label=glyph+h.name, tw=ctx.measureText(label).width;
+    ctx.fillStyle='rgba(10,18,26,0.72)'; roundRect(sx-tw/2-6, sy+3, tw+12, 16, 4); ctx.fill();
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle=col; ctx.fillText(label, sx, sy+12);
+  } else {
+    const ang=Math.atan2(sy-H/2, sx-W/2), rad=Math.min(W,H)/2-54;
+    const ex=W/2+Math.cos(ang)*rad, ey=hudTopAvoid(W/2+Math.cos(ang)*rad, H/2+Math.sin(ang)*rad);
+    ctx.translate(ex,ey); ctx.rotate(ang); ctx.fillStyle=col; ctx.globalAlpha=0.9;
+    ctx.beginPath(); ctx.moveTo(11,0); ctx.lineTo(-6,-6); ctx.lineTo(-6,6); ctx.closePath(); ctx.fill();
+    ctx.rotate(-ang); ctx.font=fnt(10); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(glyph+h.name, 0, 10);
+  }
+  ctx.restore();
+}
 function drawGuides(){
   if (ui.port || ui.settings || ui.mapOpen || ship.sinking) return;
   const d = nearbyPortWithin(900);
@@ -4062,7 +4117,9 @@ function drawGuides(){
   if (!player.quest.done && player.quest.step===2){ const cd = nearestCursed(); if (cd) drawGuide(cd.x, cd.y, 'rgba(184,120,220,0.9)', 'Cursed Deep'); }
   if (waypoint) drawGuide(waypoint.x, waypoint.y, 'rgba(120,240,220,0.9)', 'Waypoint');
   if (war && Math.hypot(war.x-ship.x, war.y-ship.y) < 6000) drawGuide(war.x, war.y, 'rgba(232,120,90,0.9)', '⚔ contested waters');
-  if (player.hold){ const hd = holdDist(ship.x, ship.y); if (hd > 400 && hd < 7000) drawGuide(holdNearestX(), player.hold.y, 'rgba(255,217,138,0.9)', '⌂ stronghold'); }
+  { const holds = ownedHoldings().map(h => { const hx = h.x + Math.round((ship.x-h.x)/WORLD_W)*WORLD_W; return { h, d: Math.hypot(hx-ship.x, h.y-ship.y) }; })
+      .filter(o => o.d > 60 && o.d < 7000).sort((a,b)=>a.d-b.d).slice(0, 6);   // nearest few — a banner over each of your holdings
+    for (const o of holds) drawHoldingBeacon(o.h); }
   { const site = nearBuildSite(360);   // only when you're right up on a bare island — a cue, not clutter
     if (site){ const a = Math.atan2(ship.y-site.y, ship.x-site.x), r = islandRadiusAt(site, a) + 40;
       drawGuide(site.x + Math.cos(a)*r, site.y + Math.sin(a)*r, 'rgba(150,220,150,0.9)', '⚒ empty island — build here'); } }
@@ -5525,6 +5582,47 @@ function drawLoreTab(ax, ay, aw){
   }
 }
 /* the captain's screens (I) — Hold · Ledger · Factions · Log · Lore, available anywhere */
+/* Realm — track every holding under your banner (captain's screens tab) */
+function drawRealmTab(ax, ay, aw){
+  ctx.textBaseline='top'; ctx.textAlign='left';
+  const holds = ownedHoldings();
+  let pendingTax = 0; for (const rec of portOwners.values()) pendingTax += rec.tax || 0;
+  ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)';
+  ctx.fillText('YOUR REALM  ('+holds.length+' holding'+(holds.length===1?'':'s')+'  ·  fleet cap '+fleetCap()+')', ax, ay);
+  let ry = ay+24;
+  if (!holds.length){
+    ctx.font=fnt(13); ctx.fillStyle='rgba(233,222,198,0.45)'; ctx.fillText('You hold no ground yet.', ax+4, ry+4);
+    ctx.font=fntS(11); ctx.fillStyle='rgba(233,222,198,0.55)';
+    ctx.fillText('Claim a razed fort, build an outpost on bare land, or lay siege to a harbour to raise your first banner.', ax+4, ry+28);
+    return;
+  }
+  if (pendingTax >= 1){ ctx.font=fntS(11); ctx.fillStyle='#e8c47a';
+    ctx.fillText('♦ '+Math.floor(pendingTax)+' coin in tribute due — paid on the tide, or when you dock at one of your harbours', ax+4, ry); ry+=22; }
+  const ph=Math.min(H-24,660), footY=(H-ph)/2 + ph - 64, col = FACTIONS.you ? FACTIONS.you.col : '#ffd98a';
+  const sorted = holds.map(h => { const hx = h.x + Math.round((ship.x-h.x)/WORLD_W)*WORLD_W; return { h, d:Math.hypot(hx-ship.x, h.y-ship.y), hx }; }).sort((a,b)=>a.d-b.d);
+  const pitch = clamp(Math.floor((footY - ry - 6)/sorted.length), 32, 46);
+  for (const o of sorted){
+    if (ry+24 > footY){ ctx.textAlign='left'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.4)'; ctx.fillText('… and more', ax+4, ry); break; }
+    const h=o.h;
+    let threat=null;
+    if (h.kind==='port'){ if (harbourSiege && harbourSiege.seed===h.seed) threat='under siege'; if (reprisal && reprisal.seed===h.seed) threat='under attack — defend!'; }
+    ctx.textAlign='left'; ctx.font=fnt(13); ctx.fillStyle=col; ctx.fillText((h.kind==='port'?'⚑ ':'⌂ ')+h.name, ax+4, ry+2);
+    ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.55)';
+    const typ = h.kind==='port' ? ((h.built?'founded harbour':'harbour')+(h.fortified?' · fortified':'')) : (h.name==='Stronghold'?'stronghold':'outpost');
+    ctx.fillText(typ, ax+190, ry+4);
+    ctx.fillStyle='rgba(159,209,232,0.7)'; ctx.fillText(bearingArrow({x:o.hx,y:h.y})+' '+fmtDist(o.d), ax+330, ry+4);
+    ctx.textAlign='right';
+    if (threat){ ctx.fillStyle='#e8916b'; ctx.font=fntS(10); ctx.fillText('⚔ '+threat, ax+aw-70, ry+4); }
+    else if (h.kind==='port'){ ctx.fillStyle='#e8c47a'; ctx.font=fntS(10); ctx.fillText(h.tax>=1?('+'+Math.floor(h.tax)+'c tribute'):'levying tribute…', ax+aw-70, ry+4); }
+    else { const bw=70, bx=ax+aw-70-bw; ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx, ry+5, bw, 8);
+      ctx.fillStyle='#9ad17a'; ctx.fillRect(bx+1, ry+6, Math.round((bw-2)*clamp(h.hp/h.maxHp,0,1)), 6);
+      ctx.textAlign='left'; ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.font=fntS(9); ctx.fillText('walls', bx-32, ry+6); }
+    ctx.textAlign='left';
+    const tbw=btnW('Track',10,8), b=mkBtn(ax+aw-tbw, ry, tbw, 24, 'Track', ((hh)=>()=>{ waypoint={ x:((hh.x%WORLD_W)+WORLD_W)%WORLD_W, y:hh.y }; setToast('Waypoint set on '+hh.name); ui.inv=false; clearKeys(); })(h));
+    b.tip='Drop a waypoint on '+h.name+' and steer there'; invButtons.push(b);
+    ry += pitch;
+  }
+}
 function drawInventory(){
   invButtons = [];
   ctx.save();
@@ -5536,17 +5634,19 @@ function drawInventory(){
   ctx.fillStyle='rgba(159,209,232,0.75)'; ctx.font=fntS(11);
   ctx.fillText(SHIPS[player.shipClass].name+' · '+REGIONS[curRegion].name+(ui.port?' · docked':''), px+48, py+54);
   // tabs
-  const tabDefs=[['hold','Hold'],['ledger','Ledger'],['factions','Factions'],['log','Log'],['lore','Lore']];
+  const tabDefs=[['hold','Hold'],['ledger','Ledger'],['realm','Realm'],['factions','Factions'],['log','Log'],['lore','Lore']];
   let txx=px+48;
   for (const [key,label] of tabDefs){ const w=btnW(label,12,10); const b=mkBtn(txx,py+80,w,34,label,()=>{ui.invTab=key;}); b.active=(ui.invTab===key); drawTabBtn(b); invButtons.push(b); txx+=w+7; }
   const ax=px+48, ay=py+130, aw=pw-96;
   if (ui.invTab==='ledger') drawLedgerTab(ax, ay, aw, py+ph-64);
+  else if (ui.invTab==='realm') drawRealmTab(ax, ay, aw);
   else if (ui.invTab==='factions') drawFactionsTab(ax, ay, aw);
   else if (ui.invTab==='log') drawLogTab(ax, ay, aw);
   else if (ui.invTab==='lore') drawLoreTab(ax, ay, aw);
   else drawInvContent(ax, ay, aw, invButtons, !!ui.port);   // Hold — ammo crates sold while docked
   { const w=btnW('Close  (I / Esc)',11,10), b=mkBtn(px+pw-48-w, py+ph-52, w, 32, 'Close  (I / Esc)', ()=>{ ui.inv=false; clearKeys(); }); invButtons.push(b); drawBtn(b); }
   for (const b of invButtons){ if (b.active===undefined && !b.noDraw && b.label!=='Close  (I / Esc)') drawBtn(b); }
+  drawButtonTip(invButtons);
   ctx.restore();
 }
 
@@ -7254,7 +7354,7 @@ function saveGame() {
     shipClass:player.shipClass, shipsOwned:player.shipsOwned, boatName:player.boatName, loreFound:player.loreFound, flotsamTaken:player.flotsamTaken.slice(-1500),
     ammo:player.ammo, ammoSel:player.ammoSel, ledger:player.ledger, rep:player.rep,
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
-    forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0, e.fac||0]),
+    forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0, e.fac||0, Math.round(e.px||0), Math.round(e.py||0)]),
     fleet: player.fleet, hold: player.hold, built: player.built||[], vault: player.vault,
     ports: [...portOwners.values()].filter(r=>!r.built).map(r=>({seed:r.seed, from:r.from, x:Math.round(r.x), y:Math.round(r.y), name:r.name, tax:Math.round(r.tax||0), fortKey:r.fortKey||0})),
     settlements: [...builtPorts.entries()].map(([k,p])=>({key:k, name:p.name, ang:p.ang, pierX:p.pierX, pierY:p.pierY, dockX:p.dockX, dockY:p.dockY, profile:p.profile, seed:p.seed, built:true, tax:Math.round((portOwners.get(p.seed)||{}).tax||0)})),
@@ -7286,7 +7386,7 @@ function loadGame() {
     for (const k in player.ledger) if (!Array.isArray(player.ledger[k])) delete player.ledger[k];   // v1→v2 ledger migration: drop coordless entries
     (s.stock||[]).forEach(([k,ss,tt]) => groundStock.set(k, { s:ss, t:tt }));
     player.rep = s.rep || {};
-    (s.forts||[]).forEach(([k,hp,dead,own,rz,fc]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(fc?{fac:fc}:{}), ...(own?{owner:'player'}:{}) }));
+    (s.forts||[]).forEach(([k,hp,dead,own,rz,fc,px,py]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(fc?{fac:fc}:{}), ...(own?{owner:'player'}:{}), ...(px?{px,py}:{}) }));
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
     player.hold = s.hold || null; player.built = s.built || []; rebuildBuiltForts(); player.vault = s.vault || {};
     portOwners.clear(); (s.ports||[]).forEach(r=>portOwners.set(r.seed, { seed:r.seed, from:r.from, x:r.x, y:r.y, name:r.name, tax:r.tax||0, since:0, ...(r.fortKey?{fortKey:r.fortKey}:{}) }));
@@ -7591,7 +7691,7 @@ window.__HS = {
   portOwners, portDefense, fleetCap, harbourSiege(){ return harbourSiege; }, reprisal(){ return reprisal; },
   siegePort(isl){ isl = isl || nearbyPortWithin(3000); if (isl) startHarbourSiege(isl); return isl && isl.port.name; },
   seizePort(isl){ isl = isl || nearbyPortWithin(3000); if (isl) seizePort(isl); return isl && isl.port.name; },
-  forceReprisal(){ reprisalCd = 0.01; }, myPorts(){ return [...portOwners.values()]; },
+  forceReprisal(){ reprisalCd = 0.01; }, myPorts(){ return [...portOwners.values()]; }, ownedHoldings,
   builtPorts, buildOptions, nearBuildSite, buildHarbour, buildOutpost, openBuildMenu,
   buildHere(kind){ const isl = nearBuildSite(3000); if (!isl) return 'no bare island near'; if (kind==='fort') buildOutpost(isl); else buildHarbour(isl, kind==='harbour'?null:kind); return isl.key; },
   fortState, nearestFort(){ let best=null,bd=1e9; const cx=Math.floor(ship.x/CHUNK),cy=Math.floor(ship.y/CHUNK);
