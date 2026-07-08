@@ -31,7 +31,14 @@ slot) now runs a multi-step wizard in the `#controlsScreen` panel: step 0 =
 controls, then 6 teaching cards (`TUTORIAL[]`: the world & your goal · trade/fish
 · shipyard upgrades · weather/night/hazards · combat & bounty · chart & captain's
 screens) → **Set sail**. Back/Skip/Next + step dots + keyboard (←/→/Enter/Esc);
-`renderWizard()` drives it via `wizStep`/`wizVoyage`. The title ⚙ gear still opens
+`renderWizard()` drives it via `wizStep`/`wizVoyage`. Each card plays a **looping
+clip of ACTUAL gameplay** (`assets/title/tut/tut_*.mp4`, ~0.6MB total,
+`TUT_CLIPS[]` → `<video autoplay loop muted playsinline>`), captured from the
+game's own world buffer (HUD-free) via the capture rig in `/tmp/helmsong-cap`
+(capserver + `CAPSHEET` synchronous sprite-sheet capture — MUTE audio first, a
+splash SFX sets a non-finite AudioParam and throws; sliced by PIL, ffmpeg
+boomerang-loop for water scenes / plain for combat+chart). The earlier
+code-drawn `TUT_VIZ` diagrams were replaced by this real footage per user. The title ⚙ gear still opens
 step 0 alone as a controls reference (Close, no Next/dots). Saved slots resume
 directly (no wizard). No in-game tutorial exists, so this is the new-player teach.
 PixelHUDUI credit fully removed (demo license = no attribution required).

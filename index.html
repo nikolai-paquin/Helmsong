@@ -63,7 +63,7 @@
   #ctrlDots span { width:8px; height:8px; border-radius:50%; background:rgba(233,222,198,0.25); transition:background .15s; }
   #ctrlDots span.on { background:#f1db97; }
   /* tutorial visual + key chips */
-  #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:132px; border-radius:5px;
+  #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:132px; border-radius:5px; object-fit:cover; background:#22485c;
     box-shadow:0 0 0 2px rgba(150,116,62,0.55), 0 4px 12px rgba(0,0,0,0.4); }
   #ctrlBody .tut-keys { display:flex; gap:5px; align-items:center; justify-content:center; margin-bottom:12px; flex-wrap:wrap; font-size:12px; }
   #ctrlBody .keycap { font-family:'VT323',ui-monospace,monospace; font-size:15px; line-height:1; color:#241606;
@@ -6817,7 +6817,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.24.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.25.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -7073,79 +7073,8 @@ const TUTORIAL = [
     body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log. The tide's with you, captain.",
     keys:[{cap:'M',lbl:'chart'},{cap:'I',lbl:'captain’s log'}] },
 ];
-/* code-drawn looping illustrations for each card (drawn to the card's <canvas>) */
-function tutBG(g,t,w,h){
-  const sky=g.createLinearGradient(0,0,0,h);
-  sky.addColorStop(0,'#274f6a'); sky.addColorStop(0.5,'#6f8a86'); sky.addColorStop(0.66,'#e8b87c'); sky.addColorStop(1,'#cf9560');
-  g.fillStyle=sky; g.fillRect(0,0,w,h);
-  const hy=h*0.6;
-  g.fillStyle='rgba(255,236,190,0.85)'; g.beginPath(); g.arc(w*0.5,hy,11,0,TAU); g.fill();
-  const sea=g.createLinearGradient(0,hy,0,h); sea.addColorStop(0,'#3a6076'); sea.addColorStop(1,'#20465a');
-  g.fillStyle=sea; g.fillRect(0,hy,w,h-hy);
-  g.strokeStyle='rgba(255,246,220,0.14)'; g.lineWidth=1.5;
-  for(let i=0;i<3;i++){ const yy=hy+9+i*11; g.beginPath();
-    for(let x=0;x<=w;x+=6){ const yv=yy+Math.sin(x*0.06+t*1.4+i)*1.5; x?g.lineTo(x,yv):g.moveTo(x,yv);} g.stroke(); }
-}
-function tutShip(g,x,y,s,flip){
-  g.save(); g.translate(x,y); if(flip)g.scale(-1,1);
-  g.strokeStyle='#5a3d22'; g.lineWidth=1.6*s; g.beginPath(); g.moveTo(0,-1*s); g.lineTo(0,-17*s); g.stroke();
-  g.fillStyle='#d9cdb2'; g.beginPath(); g.moveTo(1*s,-16*s); g.quadraticCurveTo(12*s,-9*s,2*s,-3*s); g.closePath(); g.fill();
-  g.fillStyle='#6b4a2c'; g.beginPath(); g.moveTo(-13*s,-1*s); g.quadraticCurveTo(-13*s,6*s,-7*s,7*s); g.lineTo(10*s,7*s); g.quadraticCurveTo(15*s,5*s,16*s,-1*s); g.closePath(); g.fill();
-  g.fillStyle='#4c2f1a'; g.fillRect(-13*s,-2*s,29*s,2*s);
-  g.restore();
-}
-const TUT_VIZ = [
-  function(g,t,w,h){ tutBG(g,t,w,h);                                   // the endless sea: ship sailing past an isle
-    g.fillStyle='rgba(38,66,62,0.7)'; g.beginPath(); g.ellipse(w*0.83,h*0.58,26,8,0,Math.PI,0); g.fill();
-    g.fillStyle='rgba(30,52,50,0.7)'; g.beginPath(); g.ellipse(w*0.16,h*0.585,20,6,0,Math.PI,0); g.fill();
-    tutShip(g,(t*24)%(w+60)-30,h*0.64+Math.sin(t*2)*2,1,false); },
-  function(g,t,w,h){ tutBG(g,t,w,h);                                   // fortune: net over a fishing ground, gulls
-    tutShip(g,w*0.3,h*0.64+Math.sin(t*2)*2,0.9,false);
-    const rx=w*0.66,ry=h*0.72;
-    for(let i=0;i<3;i++){ const rr=(t*15+i*15)%45; g.strokeStyle='rgba(214,238,238,'+(0.45*(1-rr/45))+')'; g.lineWidth=1.5; g.beginPath(); g.ellipse(rx,ry,rr,rr*0.4,0,0,TAU); g.stroke(); }
-    for(let i=0;i<2;i++){ const a=t*1.6+i*Math.PI, gx=rx+Math.cos(a)*20, gy=ry-26+Math.sin(a)*7; g.strokeStyle='rgba(28,40,52,0.75)'; g.lineWidth=1.4; g.beginPath(); g.moveTo(gx-4,gy); g.quadraticCurveTo(gx,gy-3,gx,gy); g.quadraticCurveTo(gx,gy-3,gx+4,gy); g.stroke(); } },
-  function(g,t,w,h){ tutBG(g,t,w,h);                                   // grander ship: small → big, glow
-    tutShip(g,w*0.28,h*0.66+Math.sin(t*2)*1.5,0.68,false);
-    tutShip(g,w*0.72,h*0.63+Math.sin(t*2+1)*1.5,1.25,false);
-    const p=0.5+0.5*Math.sin(t*3); g.fillStyle='rgba(241,219,151,'+(0.45+0.5*p)+')'; g.font='700 18px VT323,monospace'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('➜',w*0.5,h*0.5);
-    for(let i=0;i<3;i++){ const a=t*2+i*2.1; g.fillStyle='rgba(255,240,190,'+(0.4+0.5*Math.sin(t*4+i))+')'; g.beginPath(); g.arc(w*0.72+Math.cos(a)*17,h*0.44+Math.sin(a)*9,1.6,0,TAU); g.fill(); } },
-  function(g,t,w,h){ tutBG(g,t,w,h);                                   // storm: cloud, rain, lightning, ship pitching
-    tutShip(g,w*0.5,h*0.66+Math.sin(t*3)*3,0.9,false);
-    const cx=w*0.5,cy=h*0.23; g.fillStyle='rgba(58,64,76,0.94)';
-    [[-17,1,12],[-2,-4,15],[14,0,13],[3,5,12]].forEach(function(c){g.beginPath();g.arc(cx+c[0],cy+c[1],c[2],0,TAU);g.fill();});
-    g.strokeStyle='rgba(150,180,200,0.5)'; g.lineWidth=1;
-    for(let i=0;i<11;i++){ const rx=cx-26+i*5, ry=cy+13+((t*46+i*9)%(h*0.34)); g.beginPath(); g.moveTo(rx,ry); g.lineTo(rx-1,ry+5); g.stroke(); }
-    if((t%2.3)<0.12){ g.strokeStyle='rgba(255,246,205,0.95)'; g.lineWidth=1.6; g.beginPath(); g.moveTo(cx+5,cy+11); g.lineTo(cx+1,cy+24); g.lineTo(cx+7,cy+24); g.lineTo(cx+2,cy+40); g.stroke(); } },
-  function(g,t,w,h){ tutBG(g,t,w,h);                                   // combat: fire a cannonball at a raider
-    tutShip(g,w*0.23,h*0.64+Math.sin(t*2)*1.5,0.92,false);
-    tutShip(g,w*0.8,h*0.64+Math.sin(t*2+1)*1.5,1,true);
-    const ph=(t%1.6)/1.6, bx=w*0.3+(w*0.5)*ph, by=h*0.54-Math.sin(ph*Math.PI)*22;
-    if(ph<0.9){ g.fillStyle='#15110c'; g.beginPath(); g.arc(bx,by,3,0,TAU); g.fill(); g.fillStyle='rgba(255,220,160,0.5)'; g.beginPath(); g.arc(w*0.3,h*0.55,4,0,TAU); g.fill(); }
-    else { const f=1-(ph-0.9)/0.1; g.fillStyle='rgba(255,200,120,'+f+')'; g.beginPath(); g.arc(w*0.8,h*0.55,4+9*f,0,TAU); g.fill(); } },
-  function(g,t,w,h){                                                   // chart: parchment, route, pulsing waypoint, compass
-    g.fillStyle='#e8dbbe'; g.fillRect(0,0,w,h);
-    g.fillStyle='rgba(120,90,50,0.10)'; for(let i=0;i<44;i++) g.fillRect((i*53)%w,(i*97)%h,2,2);
-    g.fillStyle='rgba(150,170,140,0.5)'; g.beginPath(); g.ellipse(w*0.26,h*0.4,20,12,0,0,TAU); g.fill(); g.beginPath(); g.ellipse(w*0.72,h*0.66,24,14,0,0,TAU); g.fill();
-    g.strokeStyle='rgba(120,80,40,0.8)'; g.lineWidth=1.5; g.setLineDash([4,4]); g.beginPath(); g.moveTo(w*0.26,h*0.4); g.lineTo(w*0.72,h*0.66); g.stroke(); g.setLineDash([]);
-    const p=0.5+0.5*Math.sin(t*3), r=5+p*3; g.strokeStyle='rgba(200,60,50,'+(0.6+0.4*p)+')'; g.lineWidth=2; const wx=w*0.72,wy=h*0.66;
-    g.beginPath(); g.moveTo(wx-r,wy-r); g.lineTo(wx+r,wy+r); g.moveTo(wx+r,wy-r); g.lineTo(wx-r,wy+r); g.stroke();
-    g.strokeStyle='rgba(120,80,40,0.7)'; g.lineWidth=1; g.beginPath(); g.arc(w*0.15,h*0.22,9,0,TAU); g.stroke();
-    g.save(); g.translate(w*0.15,h*0.22); g.rotate(Math.sin(t*0.7)*0.22); g.fillStyle='#b03028'; g.beginPath(); g.moveTo(0,-9); g.lineTo(2.5,0); g.lineTo(-2.5,0); g.closePath(); g.fill(); g.fillStyle='#5a3d22'; g.beginPath(); g.moveTo(0,9); g.lineTo(2.5,0); g.lineTo(-2.5,0); g.closePath(); g.fill(); g.restore();
-  },
-];
-let tutCtx=null, tutDraw=null, tutT=0, tutLast=0;
-function setupTutViz(idx){
-  const cv=document.getElementById('tutCanvas'); if(!cv){ tutCtx=null; tutDraw=null; return; }
-  const dpr=Math.min(2,window.devicePixelRatio||1);
-  cv.width=300*dpr; cv.height=132*dpr; tutCtx=cv.getContext('2d'); tutCtx.setTransform(dpr,0,0,dpr,0,0);
-  tutDraw=TUT_VIZ[idx]||null;
-}
-function tutFrame(ts){
-  if(!tutLast) tutLast=ts; const dt=Math.min((ts-tutLast)/1000,0.05); tutLast=ts;
-  if(tutCtx && tutDraw && controlsOpen() && wizVoyage && wizStep>0){ tutT+=dt; try{ tutDraw(tutCtx,tutT,300,132); }catch(e){} }
-  requestAnimationFrame(tutFrame);
-}
-requestAnimationFrame(tutFrame);
+/* looping clips of ACTUAL gameplay captured from the game (assets/title/tut/), one per card */
+const TUT_CLIPS = ['sail','fish','grander','storm','combat','chart'];
 let wizStep = 0, wizVoyage = false;
 function renderWizard(){
   const total = wizVoyage ? 1 + TUTORIAL.length : 1, last = wizStep === total-1;
@@ -7153,15 +7082,13 @@ function renderWizard(){
     wizStep === 0 ? (wizVoyage ? 'Before you sail' : "Ship's controls") : TUTORIAL[wizStep-1].title;
   if (wizStep === 0){
     document.getElementById('ctrlBody').innerHTML = CONTROLS_HTML;
-    tutCtx = null; tutDraw = null;                                    // no viz on the controls step
   } else {
     const c = TUTORIAL[wizStep-1];
     const keysHTML = c.keys.map(k=>'<span class="keycap">'+k.cap+'</span><span class="keylbl">'+k.lbl+'</span>').join('<span class="keysep">·</span>');
     document.getElementById('ctrlBody').innerHTML =
-      '<canvas id="tutCanvas" class="tut-viz" width="300" height="132"></canvas>' +
+      '<video class="tut-viz" src="assets/title/tut/tut_'+TUT_CLIPS[wizStep-1]+'.mp4?v='+GAME_VERSION+'" autoplay loop muted playsinline></video>' +
       '<div class="tut-keys">'+keysHTML+'</div>' +
       '<div class="tut-lead">'+c.lead+'</div><div class="tut-p">'+c.body+'</div>';
-    setupTutViz(wizStep-1);
   }
   const dots = document.getElementById('ctrlDots');
   dots.style.display = wizVoyage ? '' : 'none';
