@@ -50,10 +50,18 @@
   /* controls / settings screen */
   #controlsScreen { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; padding:24px;
     background:rgba(7,12,20,0.6); transition:opacity .3s ease; }
-  #controlsScreen .cpanel { max-width:560px; width:100%; text-align:center; color:var(--paper); padding:30px 34px 26px;
+  #controlsScreen .cpanel { max-width:560px; width:100%; min-height:452px; display:flex; flex-direction:column; text-align:center; color:var(--paper); padding:30px 34px 26px;
     background:linear-gradient(158deg,#3c2c1d 0%,#241610 100%);
     border:20px solid transparent; border-image:url("assets/hud_UI_Slot_Selected.png") 17 / 20px / 0 stretch; image-rendering:pixelated; }
   #controlsScreen h2 { font-family:'VT323',ui-monospace,monospace; color:#f1db97; font-size:30px; letter-spacing:.05em; margin-bottom:16px; }
+  #ctrlBody { flex:1 1 auto; display:flex; flex-direction:column; justify-content:center; }
+  /* tutorial card */
+  #ctrlBody .tut-lead { font-family:'VT323',ui-monospace,monospace; color:#f4e3b0; font-size:22px; letter-spacing:.02em; margin-bottom:14px; }
+  #ctrlBody .tut-p { font-size:15px; line-height:1.62; color:#d8c7a4; max-width:452px; margin:0 auto; }
+  #ctrlBody .tut-p b { color:#f1db97; font-family:'VT323',ui-monospace,monospace; font-size:18px; letter-spacing:.02em; }
+  #ctrlDots { display:flex; gap:8px; justify-content:center; margin-top:16px; min-height:10px; }
+  #ctrlDots span { width:8px; height:8px; border-radius:50%; background:rgba(233,222,198,0.25); transition:background .15s; }
+  #ctrlDots span.on { background:#f1db97; }
   #controlsScreen .ctrl-grid { display:grid; grid-template-columns:auto 1fr; gap:9px 18px; text-align:left; font-size:14px; max-width:420px; margin:0 auto 18px; }
   #controlsScreen .ctrl-grid b { color:#f1db97; font-family:'VT323',ui-monospace,monospace; font-size:18px; letter-spacing:.02em; }
   #controlsScreen .ctrl-grid span:nth-child(even) { color:#cbb489; }
@@ -113,24 +121,13 @@
 <!-- controls / settings screen (shown before a new voyage, and from the title gear) -->
 <div id="controlsScreen" class="hidden">
   <div class="cpanel">
-    <h2 id="ctrlTitle">Ship's controls</h2>
-    <div class="ctrl-grid">
-      <span><b>W / S</b></span><span>raise / reef sail</span>
-      <span><b>A / D</b></span><span>turn the helm</span>
-      <span><b>Shift</b></span><span>drop anchor (brake)</span>
-      <span><b>Space</b></span><span>cast net · dock at port</span>
-      <span><b>Click</b></span><span>fire cannon (aim with mouse)</span>
-      <span><b>R</b></span><span>swap cannon ammo</span>
-      <span><b>L</b></span><span>light / douse lantern</span>
-      <span><b>M</b></span><span>open the chart</span>
-      <span><b>I</b></span><span>captain's screens (hold · ledger · log)</span>
-      <span><b>Esc</b></span><span>menu / pause</span>
-      <span><b>Scroll</b></span><span>zoom · <b>P</b> mute · <b>O</b> settings</span>
-    </div>
-    <div class="ctrl-note">Rebind keys and adjust sound &amp; graphics anytime from <b>Settings</b> (press <b>O</b> or the ⚙ gear) once you're sailing.</div>
+    <h2 id="ctrlTitle">Before you sail</h2>
+    <div id="ctrlBody"><!-- controls grid / tutorial card injected per step --></div>
+    <div id="ctrlDots"></div>
     <div class="ctrl-btns">
       <button id="ctrlBack" class="ghost">Back</button>
-      <button id="ctrlStart">Set sail &#9875;</button>
+      <button id="ctrlSkip" class="ghost">Skip intro</button>
+      <button id="ctrlNext">Next</button>
     </div>
   </div>
 </div>
@@ -6812,7 +6809,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.23.3';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.24.0';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -7032,26 +7029,77 @@ requestAnimationFrame(titleFrame);
 /* --- title flow: new voyage → controls briefing → set sail; gear → controls reference --- */
 function firstEmptySlot(){ for (let s=1;s<=SAVE_SLOTS;s++){ if (!localStorage.getItem(slotKey(s))) return s; } return 0; }
 function controlsOpen(){ return !document.getElementById('controlsScreen').classList.contains('hidden'); }
-function showControls(newVoyage){
-  document.getElementById('ctrlStart').style.display = newVoyage ? '' : 'none';
-  document.getElementById('ctrlTitle').textContent = newVoyage ? "Before you sail" : "Ship's controls";
-  document.getElementById('controlsScreen').classList.remove('hidden');
+/* --- new-voyage wizard: controls → onboarding cards → set sail. The gear shows step 0 (controls) as reference. --- */
+const CONTROLS_HTML =
+  '<div class="ctrl-grid">' +
+  '<span><b>W / S</b></span><span>raise / reef sail</span>' +
+  '<span><b>A / D</b></span><span>turn the helm</span>' +
+  '<span><b>Shift</b></span><span>drop anchor (brake)</span>' +
+  '<span><b>Space</b></span><span>cast net · dock at port</span>' +
+  '<span><b>Click</b></span><span>fire cannon (aim with mouse)</span>' +
+  '<span><b>R</b></span><span>swap cannon ammo</span>' +
+  '<span><b>L</b></span><span>light / douse lantern</span>' +
+  '<span><b>M</b></span><span>open the chart</span>' +
+  "<span><b>I</b></span><span>captain's screens (hold · ledger · log)</span>" +
+  '<span><b>Esc</b></span><span>menu / pause</span>' +
+  '<span><b>Scroll</b></span><span>zoom · <b>P</b> mute · <b>O</b> settings</span>' +
+  '</div>' +
+  "<div class=\"ctrl-note\">Rebind keys and adjust sound &amp; graphics anytime from <b>Settings</b> (press <b>O</b> or the ⚙ gear) once you're sailing.</div>";
+const TUTORIAL = [
+  { title:'The endless sea', lead:"You've inherited a weathered sloop and an open horizon.",
+    body:"There's no single way to win — <b>trade</b>, <b>fish</b>, <b>fight</b>, and <b>explore</b> to grow rich, earn grander ships, and make your name across ten culture-seaboards. Sail far enough east and the world wraps back on itself; only the polar ice walls you in." },
+  { title:'Make your fortune', lead:'Every captain needs coin.',
+    body:"Cast your net over <b>fishing grounds</b> — watch for circling gulls and rippling water. Carry your catch and cargo between ports and sell where it's scarce; every harbour pays differently. Press <b>Space</b> to cast a net, or to dock when a port is near." },
+  { title:'A grander ship', lead:'Your sloop is only the beginning.',
+    body:"At a port's <b>Shipyard</b>, spend coin to strengthen your hull, add sail and cannons, widen your hold, or buy a whole new class of ship. Some seas — frozen, cursed, weed-choked — gnaw an unfitted hull until you fit the right gear." },
+  { title:'The sea bites back', lead:'Fair weather never lasts.',
+    body:"Squalls sweep in fast — reef your sail (<b>S</b>) and ride them out, or run before the wind. Night falls often; light your <b>lantern</b> (<b>L</b>) to see, though its glow draws hungry things. Ease off the sail near shoals, reefs, ice, and whirlpools." },
+  { title:'Stand your ground', lead:'Pirates and sea-terrors will hunt you.',
+    body:"<b>Click</b> to fire your cannons (aim with the mouse); press <b>R</b> to change shot, and sink your attackers for loot. But fire on peaceful ships and the navy puts a bounty on you — pay it off at any harbour to call them off." },
+  { title:'Chart your course', lead:'The whole sea is yours to read.',
+    body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log. The tide's with you, captain." },
+];
+let wizStep = 0, wizVoyage = false;
+function renderWizard(){
+  const total = wizVoyage ? 1 + TUTORIAL.length : 1, last = wizStep === total-1;
+  document.getElementById('ctrlTitle').textContent =
+    wizStep === 0 ? (wizVoyage ? 'Before you sail' : "Ship's controls") : TUTORIAL[wizStep-1].title;
+  document.getElementById('ctrlBody').innerHTML =
+    wizStep === 0 ? CONTROLS_HTML
+                  : '<div class="tut-lead">'+TUTORIAL[wizStep-1].lead+'</div><div class="tut-p">'+TUTORIAL[wizStep-1].body+'</div>';
+  const dots = document.getElementById('ctrlDots');
+  dots.style.display = wizVoyage ? '' : 'none';
+  if (wizVoyage) dots.innerHTML = Array.from({length:total}, (_,i)=>'<span class="'+(i===wizStep?'on':'')+'"></span>').join('');
+  document.getElementById('ctrlBack').textContent = wizStep===0 ? (wizVoyage?'Back':'Close') : 'Back';
+  const next = document.getElementById('ctrlNext');
+  next.style.display = wizVoyage ? '' : 'none'; next.textContent = last ? 'Set sail ⚓' : 'Next';
+  document.getElementById('ctrlSkip').style.display = (wizVoyage && !last) ? '' : 'none';
 }
+function showControls(newVoyage){ wizVoyage = !!newVoyage; wizStep = 0; renderWizard(); document.getElementById('controlsScreen').classList.remove('hidden'); }
 function hideControls(){ document.getElementById('controlsScreen').classList.add('hidden'); }
-function beginNewVoyage(slot){ setActiveSlot(slot || firstEmptySlot() || 1); showControls(true); }   // briefing first, then Set sail
+function wizNext(){ if (!wizVoyage) return; const total = 1 + TUTORIAL.length;
+  if (wizStep < total-1){ wizStep++; renderWizard(); } else { hideControls(); start(true); } }
+function wizBack(){ if (wizStep > 0){ wizStep--; renderWizard(); } else hideControls(); }
+function beginNewVoyage(slot){ setActiveSlot(slot || firstEmptySlot() || 1); showControls(true); }   // briefing + onboarding, then Set sail
 document.getElementById('startVoyage').addEventListener('click', () => {
   let slot = firstEmptySlot();
   if (!slot){ if (!confirm('All four slots hold a voyage. Overwrite Slot 1 with a new one?')) return; slot = 1; }
   beginNewVoyage(slot);
 });
 document.getElementById('titleSettings').addEventListener('click', () => showControls(false));
-document.getElementById('ctrlBack').addEventListener('click', hideControls);
-document.getElementById('ctrlStart').addEventListener('click', () => { hideControls(); start(true); });
+document.getElementById('ctrlBack').addEventListener('click', wizBack);
+document.getElementById('ctrlNext').addEventListener('click', wizNext);
+document.getElementById('ctrlSkip').addEventListener('click', () => { hideControls(); start(true); });
 document.getElementById('controlsScreen').addEventListener('click', e => { if (e.target.id === 'controlsScreen') hideControls(); });
 
 window.addEventListener('keydown', e => {                      // Enter resumes the most recent voyage (or starts one if none)
   if (world.running) return;
-  if (controlsOpen()){ if (e.key==='Escape') hideControls(); return; }
+  if (controlsOpen()){
+    if (e.key==='Escape') hideControls();
+    else if (e.key==='ArrowLeft') wizBack();
+    else if (e.key==='ArrowRight' || e.key==='Enter') wizNext();
+    return;
+  }
   if (!(e.key==='Enter' || e.key===' ')) return;
   let best = 0, bt = -1;
   for (let s = 1; s <= SAVE_SLOTS; s++){

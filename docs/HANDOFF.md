@@ -24,8 +24,21 @@ reference. Empty slot → briefing → sail; saved slot → resumes; all verifie
 console clean. **PENDING:** optional `title_ship.png` re-export on magenta to
 remove a faint lantern-glow halo (the only interim asset left). Art prompts +
 keying live in the session log. Portfolio pass (trailer/case-study/deploy)
-resumes after the title lands. PixelHUDUI credit moved from the title to the
-controls briefing.
+resumes after the title lands.
+
+**ONBOARDING WIZARD (v0.24.0).** Starting a new voyage (the button or an empty
+slot) now runs a multi-step wizard in the `#controlsScreen` panel: step 0 =
+controls, then 6 teaching cards (`TUTORIAL[]`: the world & your goal · trade/fish
+· shipyard upgrades · weather/night/hazards · combat & bounty · chart & captain's
+screens) → **Set sail**. Back/Skip/Next + step dots + keyboard (←/→/Enter/Esc);
+`renderWizard()` drives it via `wizStep`/`wizVoyage`. The title ⚙ gear still opens
+step 0 alone as a controls reference (Close, no Next/dots). Saved slots resume
+directly (no wizard). No in-game tutorial exists, so this is the new-player teach.
+PixelHUDUI credit fully removed (demo license = no attribution required).
+
+**Title clouds** are one screen-scaled swaying layer (no tiling → no seam/ghost,
+scales on big monitors); the title render loop is crash-proofed (try/catch, no
+getImageData) so a `file://` open can't blank it.
 
 
 **THE GAME IS FEATURE-COMPLETE: V1–V16 ALL SHIPPED, at v0.22.2** (~6,970
