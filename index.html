@@ -65,6 +65,8 @@
   /* tutorial visual + key chips */
   #ctrlBody .tut-viz { display:block; margin:0 auto 10px; width:300px; height:169px; border-radius:5px; object-fit:cover; background:#22485c;
     box-shadow:0 0 0 2px rgba(150,116,62,0.55), 0 4px 12px rgba(0,0,0,0.4); }
+  #ctrlBody .tut-emblem { overflow:hidden; }
+  #ctrlBody .tut-emblem svg { display:block; width:100%; height:100%; }
   #ctrlBody .tut-keys { display:flex; gap:5px; align-items:center; justify-content:center; margin-bottom:12px; flex-wrap:wrap; font-size:12px; }
   #ctrlBody .keycap { font-family:'VT323',ui-monospace,monospace; font-size:15px; line-height:1; color:#241606;
     background:linear-gradient(#f4e2a6,#cbac62); border-radius:4px; padding:3px 8px 2px; box-shadow:0 2px 0 #6e5427; }
@@ -4061,7 +4063,7 @@ function drawGuides(){
   if (waypoint) drawGuide(waypoint.x, waypoint.y, 'rgba(120,240,220,0.9)', 'Waypoint');
   if (war && Math.hypot(war.x-ship.x, war.y-ship.y) < 6000) drawGuide(war.x, war.y, 'rgba(232,120,90,0.9)', '⚔ contested waters');
   if (player.hold){ const hd = holdDist(ship.x, ship.y); if (hd > 400 && hd < 7000) drawGuide(holdNearestX(), player.hold.y, 'rgba(255,217,138,0.9)', '⌂ stronghold'); }
-  { const site = nearBuildSite(1300);   // a bare island you could settle — flag it as you sail up
+  { const site = nearBuildSite(360);   // only when you're right up on a bare island — a cue, not clutter
     if (site){ const a = Math.atan2(ship.y-site.y, ship.x-site.x), r = islandRadiusAt(site, a) + 40;
       drawGuide(site.x + Math.cos(a)*r, site.y + Math.sin(a)*r, 'rgba(150,220,150,0.9)', '⚒ empty island — build here'); } }
   if (harbourSiege){ const hx = harbourSiege.x + Math.round((ship.x - harbourSiege.x)/WORLD_W)*WORLD_W; drawGuide(hx, harbourSiege.y, 'rgba(232,120,90,0.95)', '⚔ '+harbourSiege.name); }
@@ -4080,7 +4082,7 @@ function drawBossBar(){
 function drawSiegeBar(){
   if (!harbourSiege) return;
   const s = harbourSiege, def = portDefense.get(s.seed); if (!def) return;
-  const w = Math.min(440, W-80), x = (W-w)/2, y = 78;
+  const w = Math.min(500, W-64), x = (W-w)/2, y = 78;
   const fst = fortOf(s.isl) ? fortStateOf(s.isl) : null, fortUp = fst && fst.hp > 0;
   ctx.save();
   ctx.fillStyle='rgba(10,18,28,0.74)'; roundRect(x-8,y-8,w+16,48,6); ctx.fill();
@@ -4091,9 +4093,9 @@ function drawSiegeBar(){
   ctx.fillStyle='#e9dec6'; ctx.font=fnt(12); ctx.textAlign='center'; ctx.textBaseline='bottom';
   ctx.fillText('SIEGE — '+s.name.toUpperCase(), W/2, y+6);
   ctx.font=fntS(10); ctx.textBaseline='top'; ctx.fillStyle='rgba(233,222,198,0.6)';
-  ctx.fillText(fortUp && def.g <= def.gmax*0.31 ? 'her fort holds the line — raze it to break the garrison'
-             : def.g > 0 ? 'break her garrison — sink her defenders and shell the town'
-             : 'garrison broken — hold her waters to take the harbour', W/2, y+30);
+  ctx.fillText(fortUp && def.g <= def.gmax*0.31 ? 'raze her fort to break the garrison'
+             : def.g > 0 ? 'sink her defenders and shell the town'
+             : 'hold her waters to take the harbour', W/2, y+30);
   ctx.restore();
 }
 function drawTouchUI(){
@@ -5431,28 +5433,29 @@ function drawBuildMenu(){
   if (!opts.length){ ui.build = null; return; }                 // nothing left to raise here
   ctx.save();
   ctx.fillStyle='rgba(8,16,26,0.72)'; ctx.fillRect(0,0,W,H);
-  const pw = Math.min(600, W-24), ph = Math.min(340, H-24), px = (W-pw)/2, py = (H-ph)/2;
+  const pw = Math.min(660, W-24), ph = Math.min(360, H-24), px = (W-pw)/2, py = (H-ph)/2;
   chromePanel(px,py,pw,ph,{r:10,fw:5,rivets:true});
   ctx.textAlign='left'; ctx.textBaseline='top';
-  ctx.fillStyle=FACTIONS.you.col; ctx.font=fnt(16); ctx.fillText('BUILD ON THIS ISLAND', px+40, py+26);
+  ctx.fillStyle=FACTIONS.you.col; ctx.font=fnt(16); ctx.fillText('BUILD ON THIS ISLAND', px+40, py+28);
   ctx.fillStyle='rgba(233,222,198,0.55)'; ctx.font=fntS(11);
-  ctx.fillText('bare land, and yours to settle — raise what you will and fly your banner over it', px+40, py+54);
+  ctx.fillText('bare land, and yours to settle — raise what you will and fly your banner', px+40, py+56);
   const ax = px+40, rowW = pw-80;
-  let ry = py+92;
+  let ry = py+98;
+  // label + cost button on the top line; the description sits on its own line clear beneath the button
   const row = (label, desc, cost, enabled, action, tip) => {
-    ctx.font=fnt(14); ctx.fillStyle = enabled ? '#e9dec6' : 'rgba(233,222,198,0.4)'; ctx.textAlign='left';
-    ctx.fillText(label, ax, ry+4);
-    ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText(desc, ax, ry+27);
-    if (enabled){ const canPay = player.coin >= cost; const w = btnW(cost+'c',12,12);
-      const b = mkBtn(ax+rowW-w, ry, w, 32, cost+'c', action); b.tip = tip; buildButtons.push(b);
-      if (!canPay){ ctx.textAlign='right'; ctx.font=fntS(9); ctx.fillStyle='rgba(232,145,107,0.8)'; ctx.fillText('need coin', ax+rowW-w-10, ry+10); ctx.textAlign='left'; } }
-    else { ctx.textAlign='right'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.4)'; ctx.fillText('already raised here', ax+rowW, ry+9); ctx.textAlign='left'; }
-    ry += 66;
+    ctx.textAlign='left'; ctx.font=fnt(14); ctx.fillStyle = enabled ? '#e9dec6' : 'rgba(233,222,198,0.4)';
+    ctx.fillText(label, ax, ry+6);
+    if (enabled){ const w = btnW(cost+'c',12,12);
+      const b = mkBtn(ax+rowW-w, ry, w, 30, cost+'c', action); b.tip = tip; buildButtons.push(b);
+      if (player.coin < cost){ ctx.textAlign='right'; ctx.font=fntS(9); ctx.fillStyle='rgba(232,145,107,0.85)'; ctx.fillText('need coin', ax+rowW-w-10, ry+9); ctx.textAlign='left'; } }
+    else { ctx.textAlign='right'; ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.4)'; ctx.fillText('already raised here', ax+rowW, ry+8); ctx.textAlign='left'; }
+    ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText(desc, ax, ry+36);   // own line, below the button
+    ry += 74;
   };
-  row('⚓  Found a Harbour', 'a settlement you can dock at, trade at, and tax — your own port town', HARBOUR_COST, opts.includes('harbour'),
+  row('⚓  Found a Harbour', 'dock, trade, and gather tribute — your own port town', HARBOUR_COST, opts.includes('harbour'),
       () => { const i = ui.build; ui.build = null; ui.naming = { text:'', kind:'settlement', isl:i }; clearKeys(); },
       'Raise a harbour town: dock to trade at your own market, gather its tribute, and count it among your holdings (grows your fleet). You name it.');
-  row('⚒  Raise a Fort', player.hold ? 'a stronghold whose guns defend these waters' : 'your first stronghold — store goods, found your banner, guard the seas', OUTPOST_COST, opts.includes('fort'),
+  row('⚒  Raise a Fort', player.hold ? 'its guns guard these waters against your enemies' : 'your first stronghold — store goods, found your banner', OUTPOST_COST, opts.includes('fort'),
       () => { const i = ui.build; ui.build = null; buildOutpost(i); },
       'Raise a keep: its cannon auto-defend the waters against your enemies, and it widens your fleet. Your first fort becomes your stronghold.');
   { const w = btnW('Close  (Esc)',11,10); buildButtons.push(mkBtn(px+pw-40-w, py+ph-52, w, 32, 'Close  (Esc)', ()=>{ ui.build=null; clearKeys(); })); }
@@ -7468,27 +7471,37 @@ const CONTROLS_HTML =
   '</div>' +
   "<div class=\"ctrl-note\">Rebind keys and adjust sound &amp; graphics anytime from <b>Settings</b> (press <b>O</b> or the ⚙ gear) once you're sailing.</div>";
 const TUTORIAL = [
-  { title:'The endless sea', lead:"You've inherited a weathered sloop and an open horizon.",
+  { title:'The endless sea', clip:'sail', lead:"You've inherited a weathered sloop and an open horizon.",
     body:"There's no single way to win — <b>trade</b>, <b>fish</b>, <b>fight</b>, and <b>explore</b> to grow rich, earn grander ships, and make your name across ten culture-seaboards. Sail far enough east and the world wraps back on itself; only the polar ice walls you in.",
     keys:[{cap:'W / S',lbl:'sail'},{cap:'A / D',lbl:'steer'}] },
-  { title:'Make your fortune', lead:'Every captain needs coin.',
+  { title:'Make your fortune', clip:'fish', lead:'Every captain needs coin.',
     body:"Cast your net over <b>fishing grounds</b> — watch for circling gulls and rippling water. Carry your catch and cargo between ports and sell where it's scarce; every harbour pays differently. Press <b>Space</b> to cast a net, or to dock when a port is near.",
     keys:[{cap:'Space',lbl:'cast net · dock'}] },
-  { title:'A grander ship', lead:'Your sloop is only the beginning.',
+  { title:'A grander ship', clip:'grander', lead:'Your sloop is only the beginning.',
     body:"At a port's <b>Shipyard</b>, spend coin to strengthen your hull, add sail and cannons, widen your hold, or buy a whole new class of ship. Some seas — frozen, cursed, weed-choked — gnaw an unfitted hull until you fit the right gear.",
     keys:[{cap:'Space',lbl:'dock, then Shipyard'}] },
-  { title:'The sea bites back', lead:'Fair weather never lasts.',
+  { title:'The sea bites back', clip:'storm', lead:'Fair weather never lasts.',
     body:"Squalls sweep in fast — reef your sail (<b>S</b>) and ride them out, or run before the wind. Night falls often; light your <b>lantern</b> (<b>L</b>) to see, though its glow draws hungry things. Ease off the sail near shoals, reefs, ice, and whirlpools.",
     keys:[{cap:'S',lbl:'reef'},{cap:'L',lbl:'lantern'}] },
-  { title:'Stand your ground', lead:'Pirates and sea-terrors will hunt you.',
+  { title:'Stand your ground', clip:'combat', lead:'Pirates and sea-terrors will hunt you.',
     body:"<b>Click</b> to fire your cannons (aim with the mouse); press <b>R</b> to change shot, and sink your attackers for loot. But fire on peaceful ships and the navy puts a bounty on you — pay it off at any harbour to call them off.",
     keys:[{cap:'Click',lbl:'fire'},{cap:'R',lbl:'swap shot'}] },
-  { title:'Chart your course', lead:'The whole sea is yours to read.',
-    body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log. The tide's with you, captain.",
+  { title:'Chart your course', clip:'chart', lead:'The whole sea is yours to read.',
+    body:"Open the <b>chart</b> (<b>M</b>) to see the world and drop a waypoint; follow the guide-arrows to ports and jobs. Press <b>I</b> anytime for your captain's screens — hold, ledger, factions, and log.",
     keys:[{cap:'M',lbl:'chart'},{cap:'I',lbl:'captain’s log'}] },
+  { title:'Raise your own holdings', lead:'Bare islands are yours to settle.',
+    emblem:'<svg viewBox="0 0 300 169" preserveAspectRatio="xMidYMid meet"><rect width="300" height="169" fill="#22485c"/><path d="M0 118 Q75 108 150 116 T300 116 V169 H0 Z" fill="#1b3a4b"/><path d="M60 122 Q95 78 150 80 Q210 82 244 122 Z" fill="#3f6b48"/><path d="M60 122 Q95 78 150 80 Q210 82 244 122" fill="none" stroke="#2c4c33" stroke-width="2"/><path d="M96 122 Q100 100 116 100 L128 100 Q132 122 132 122 Z" fill="#8a6a3c"/><rect x="104" y="86" width="20" height="20" fill="#9a7742"/><path d="M104 86 L114 74 L124 86 Z" fill="#6f4f29"/><line x1="150" y1="86" x2="150" y2="44" stroke="#e8dcc0" stroke-width="3"/><path d="M150 47 L190 57 L150 67 Z" fill="#f1db97"/><circle cx="150" cy="44" r="3" fill="#f1db97"/></svg>',
+    body:"Sail right up to an <b>empty island</b> and press <b>Space</b> to build: found a <b>harbour</b> — your own port town to dock, trade, and gather tribute — or raise a <b>fort</b> whose guns guard the waters. Each holding you raise lets you lead a larger fleet.",
+    keys:[{cap:'Space',lbl:'build on bare land'}] },
+  { title:'Take a harbour by force', lead:'Any town can be made yours.',
+    emblem:'<svg viewBox="0 0 300 169" preserveAspectRatio="xMidYMid meet"><rect width="300" height="169" fill="#22485c"/><path d="M0 122 Q75 114 150 120 T300 120 V169 H0 Z" fill="#1b3a4b"/><g fill="#8a6a3c" stroke="#5f4526" stroke-width="2"><rect x="176" y="70" width="52" height="52"/><rect x="172" y="60" width="12" height="12"/><rect x="192" y="60" width="12" height="12"/><rect x="212" y="60" width="12" height="12"/></g><rect x="196" y="92" width="14" height="30" fill="#3a2c18"/><path d="M50 120 Q110 20 176 72" fill="none" stroke="#f1db97" stroke-width="2" stroke-dasharray="5 5" opacity="0.85"/><circle cx="52" cy="120" r="7" fill="#2a2018" stroke="#e8916b" stroke-width="2"/><g stroke="#f5b25a" stroke-width="3" stroke-linecap="round"><line x1="180" y1="74" x2="168" y2="62"/><line x1="184" y1="70" x2="196" y2="58"/><line x1="182" y1="80" x2="170" y2="82"/></g><circle cx="182" cy="74" r="9" fill="none" stroke="#e8765a" stroke-width="2" opacity="0.8"/></svg>',
+    body:"<b>Fire on a harbour</b> to lay siege. Sink the defenders it sorties and shell the town to break its garrison — <b>raze its fort first</b> if it has one. Hold the waters until it strikes its colours, and it flies <b>your banner</b>: trade, tribute, and a bigger fleet.",
+    keys:[{cap:'Click',lbl:'fire on the town'}] },
+  { title:'Forts & your banner', lead:'Empire is won at the cannon’s mouth.',
+    emblem:'<svg viewBox="0 0 300 169" preserveAspectRatio="xMidYMid meet"><rect width="300" height="169" fill="#22485c"/><path d="M0 128 Q75 120 150 126 T300 126 V169 H0 Z" fill="#1b3a4b"/><g fill="#7f6238" stroke="#57401f" stroke-width="2"><rect x="96" y="78" width="108" height="50"/><rect x="90" y="66" width="16" height="16"/><rect x="116" y="66" width="16" height="16"/><rect x="142" y="66" width="16" height="16"/><rect x="168" y="66" width="16" height="16"/><rect x="194" y="66" width="16" height="16"/></g><rect x="140" y="98" width="20" height="30" fill="#3a2c18"/><line x1="150" y1="66" x2="150" y2="24" stroke="#e8dcc0" stroke-width="3"/><path d="M150 27 L196 34 L188 44 L196 54 L150 47 Z" fill="#ffd98a" stroke="#c9a24b" stroke-width="1.5"/></svg>',
+    body:"Sink an enemy <b>fort</b> to a ruin, then press <b>Space</b> to <b>claim</b> it — or build your own. At a stronghold, <b>raise your banner</b> to found your faction. Your holdings fly your flag and defend their seas, but the dispossessed will come to <b>retake</b> them — answer the call.",
+    keys:[{cap:'Space',lbl:'claim a ruin'},{cap:'I',lbl:'your holdings'}] },
 ];
-/* looping clips of ACTUAL gameplay captured from the game (assets/title/tut/), one per card */
-const TUT_CLIPS = ['sail','fish','grander','storm','combat','chart'];
 let wizStep = 0, wizVoyage = false;
 function renderWizard(){
   const total = wizVoyage ? 1 + TUTORIAL.length : 1, last = wizStep === total-1;
@@ -7499,8 +7512,11 @@ function renderWizard(){
   } else {
     const c = TUTORIAL[wizStep-1];
     const keysHTML = c.keys.map(k=>'<span class="keycap">'+k.cap+'</span><span class="keylbl">'+k.lbl+'</span>').join('<span class="keysep">·</span>');
+    const viz = c.emblem
+      ? '<div class="tut-viz tut-emblem">'+c.emblem+'</div>'
+      : '<video class="tut-viz" src="assets/title/tut/tut_'+c.clip+'.mp4?v='+GAME_VERSION+'" autoplay loop muted playsinline></video>';
     document.getElementById('ctrlBody').innerHTML =
-      '<video class="tut-viz" src="assets/title/tut/tut_'+TUT_CLIPS[wizStep-1]+'.mp4?v='+GAME_VERSION+'" autoplay loop muted playsinline></video>' +
+      viz +
       '<div class="tut-keys">'+keysHTML+'</div>' +
       '<div class="tut-lead">'+c.lead+'</div><div class="tut-p">'+c.body+'</div>';
   }

@@ -7,6 +7,37 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**✨ V1.2 UI POLISH + ONBOARDING CARDS (2026-07-08 — feedback pass, verified,
+console clean).** Three fixes from the user's screenshots:
+- **Build-menu overlap fixed** — descriptions ran under the cost buttons. Panel
+  widened 600→660; each row now draws the cost button on the label line and the
+  description on its own line clear beneath it (was `ry+27` colliding with a 32-tall
+  button at `ry`); descriptions shortened. Verified in the 'need coin' state.
+- **Siege-bar hint overflow fixed** — the sub-line spilled past the panel. Panel
+  widened 440→500 and the three hints shortened ('sink her defenders and shell the
+  town' etc.). Verified mid-siege.
+- **Build indicator only shows super-close** — `drawGuides` build marker range
+  1300u→**360u** (just outside the ~300u build-action range), so it's a docking-cue,
+  not persistent clutter.
+- **Three onboarding cards added** (wizard now 9 cards): *Raise your own holdings*
+  (build harbour/fort on empty land) · *Take a harbour by force* (siege & capture) ·
+  *Forts & your banner* (raze/claim forts, found your faction, reprisals). Each card
+  carries strong teaching text + key chips. **Visual:** rather than video clips
+  (the capture pipeline can't cleanly show these UI/strategy features, and browser→
+  disk byte-transfer is blocked in the preview sandbox — cross-origin POST to the
+  capserver fails, hand-transfer of 30KB base64 is unreliable), the new cards use
+  **inline-SVG emblems** (`emblem` field on the TUTORIAL entry; `renderWizard` renders
+  `<div class="tut-viz tut-emblem">`+svg): an island-with-flag, a cannonball arcing
+  into a bombarded tower, a keep flying a banner — gold-on-teal, matching the wizard
+  style. The 6 original cards still use their `tut_*.mp4` clips (now via a per-card
+  `clip` field; `TUT_CLIPS` array retired). All three emblems screenshotted. NOTE: if
+  bespoke gameplay footage is wanted for these later, capture full-frame (HUD-
+  inclusive) since the menus/HUD are the subject — the world-buffer CAPSHEET rig
+  won't show them. **Harness note:** `preview_eval` wedged repeatedly this session on
+  evals that clicked `#startVoyage`; driving the wizard via `showControls(true)` +
+  `wizStep=N; renderWizard()` worked; `preview_stop`+`preview_start` re-pairs a stuck
+  channel.
+
 **🏗 V1.2 FOUND-YOUR-OWN SETTLEMENTS (2026-07-08 — extends the build system,
 verified via `__HS` + real-reload persistence, console clean).** Two asks: an
 approach indicator for buildable islands, and the ability to found **harbours/
