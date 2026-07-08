@@ -6812,7 +6812,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '0.23.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '0.23.2';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6963,13 +6963,14 @@ function buildCloudTile(){
   const cc = c.getContext('2d'); cc.imageSmoothingEnabled = true;
   cc.drawImage(img, 0, 0, TW, TH);
   const F = Math.round(TW*0.12);                                             // feather width (also the tile overlap)
-  const id = cc.getImageData(0,0,TW,TH), d = id.data;
-  for (let y=0; y<TH; y++) for (let x=0; x<F; x++){
-    const f = x/F;
-    d[(y*TW + x)*4 + 3]        *= f;   // ramp the left edge up from transparent
-    d[(y*TW + (TW-1-x))*4 + 3] *= f;   // ramp the right edge down to transparent
-  }
-  cc.putImageData(id, 0, 0);
+  // erase the left/right edges to transparent with a gradient (destination-out) —
+  // pure canvas ops, NO getImageData, so a cross-origin/file:// image can't taint-fail this.
+  cc.globalCompositeOperation = 'destination-out';
+  let gl = cc.createLinearGradient(0,0,F,0); gl.addColorStop(0,'rgba(0,0,0,1)'); gl.addColorStop(1,'rgba(0,0,0,0)');
+  cc.fillStyle = gl; cc.fillRect(0, 0, F, TH);
+  let gr = cc.createLinearGradient(TW-F,0,TW,0); gr.addColorStop(0,'rgba(0,0,0,0)'); gr.addColorStop(1,'rgba(0,0,0,1)');
+  cc.fillStyle = gr; cc.fillRect(TW-F, 0, F, TH);
+  cc.globalCompositeOperation = 'source-over';
   c._F = F; cloudTile = c;
 }
 
@@ -7048,7 +7049,7 @@ function titleFrame(ts){
   if (W !== window.innerWidth || H !== window.innerHeight) resize();
   if (!titleLast) titleLast = ts;
   const dt = Math.min((ts - titleLast)/1000, 0.05); titleLast = ts; titleT += dt;
-  drawTitleScene();
+  try { if (W > 0 && H > 0) drawTitleScene(); } catch(e){ /* one bad frame must never kill the title loop */ }
   ctx.imageSmoothingEnabled = false;                          // restore the game's crisp default
   requestAnimationFrame(titleFrame);
 }
