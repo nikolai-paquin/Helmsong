@@ -567,11 +567,15 @@ const FACTIONS = {
              home:'Wherever your stronghold stands, those waters are yours.' },
 };
 const FACTION_ORDER = Object.keys(FACTIONS).filter(k => k !== 'you');
-function portFaction(isl){
+const portOwners = new Map();   // portSeed → {seed, from, x, y, name, tax, since, fortKey?} — harbours you've seized (HARBOUR CONQUEST)
+const portDefense = new Map();  // portSeed → {g, gmax, t} — a town's garrison, drained by siege, regenerates when left alone
+function portBaseFac(isl){      // the harbour's native owner (cached); ownership override is separate so it reverts cleanly
   if (isl.port.fac) return isl.port.fac;
   const h = hash2(isl.port.seed, 5150, 3);
   return isl.port.fac = h < 0.42 ? 'crown' : h < 0.72 ? 'guild' : 'free';
 }
+function portFaction(isl){ return portOwners.has(isl.port.seed) ? 'you' : portBaseFac(isl); }
+function isMyPort(isl){ return isl.port && portOwners.has(isl.port.seed); }
 function facOfEnemy(e){ return e.ghost ? 'tide' : e.ship ? 'redsails' : 'tide'; }   // monsters answer to the Deep Song
 function facOfNpc(n){ return n.navy ? 'crown' : n.ghost ? 'tide' : n.type==='fisher' ? 'free' : 'guild'; }
 function repOf(fac){ return player.rep[fac] || 0; }
@@ -599,8 +603,9 @@ function homeWaters(x, y){   // whose waters you're in — nearest owned port wi
   return best ? portFaction(best) : null;
 }
 // faction standing sways what an owned port charges you
-function facBuyMul(isl){ const r = repOf(portFaction(isl)); return 1 - clamp(r,0,60)*0.0008 + clamp(-r,0,80)*0.002; }
+function facBuyMul(isl){ if (isMyPort(isl)) return 0.9; const r = repOf(portFaction(isl)); return 1 - clamp(r,0,60)*0.0008 + clamp(-r,0,80)*0.002; }   // your own harbours give you a good rate
 function facSellMul(isl){
+  if (isMyPort(isl)) return 1.12;                                    // and pay a premium for your goods
   const f = portFaction(isl), r = repOf(f);
   return (1 - clamp(-r,0,80)*0.0015) * (player.pact && f==='guild' ? 1.08 : 1);   // the Guild honours its pacts
 }
@@ -771,6 +776,161 @@ function rebuildBuiltForts(){   // restore player-raised outpost defs from the s
   for (const b of (player.built||[])){
     const key = 'ft'+b.k;
     builtForts.set(b.k, { fac:'you', max:b.max||340, key, px:b.px, py:b.py });
+  }
+}
+
+/* ========================= HARBOUR CONQUEST (V1.2) ========================
+   Take a populated harbour by force: lay siege (fire on the town), break its
+   garrison (sink its defender waves + shell it; a standing fort holds the line
+   until razed), hold the waters, and it strikes its colours. Owned harbours fly
+   your banner, pay tribute, trade you a good rate, and grow your fleet cap — and
+   their former owners will come to retake them. ========================== */
+let harbourSiege = null;         // at most one active assault { seed, isl, x, y, name, from, control, ctrlMax }
+const GARRISON = { crown:220, guild:180, free:130, redsails:210, tide:250 };
+function garrisonMaxOf(isl){ return (GARRISON[portBaseFac(isl)] || 170) + (fortOf(isl) ? 120 : 0); }
+function portDefenseOf(isl){
+  const k = isl.port.seed;
+  let e = portDefense.get(k);
+  const gmax = garrisonMaxOf(isl);
+  if (!e){ e = { g: gmax, gmax, t: world.elapsed }; portDefense.set(k, e); }
+  else { if (e.gmax !== gmax) e.gmax = gmax;
+    if (!harbourSiege || harbourSiege.seed !== k){                  // the garrison mans back up when left in peace (~1.5 game-days)
+      e.g = Math.min(gmax, e.g + (world.elapsed - e.t) * (gmax/1260)); }
+    e.t = world.elapsed; }
+  return e;
+}
+function rallyDefenders(fac){    // the harbour's faction turns on you when the first ball lands
+  for (const o of npcs) if (!o.dead && facOfNpc(o) === fac && Math.hypot(o.x-ship.x, o.y-ship.y) < 1100){ o.hostile = true; o.provoked = true; }
+}
+function startHarbourSiege(isl){
+  const from = portBaseFac(isl);
+  harbourSiege = { seed: isl.port.seed, isl, x: isl.port.dockX, y: isl.port.dockY, name: isl.port.name, from, control: 0, ctrlMax: 16, waveT: 3 };
+  repAdj(from, -16); rallyDefenders(from);
+  setToast('⚔ You lay siege to '+isl.port.name+' — break her garrison and hold the waters!', true);
+}
+// a friendly shot landing on the town — declare/advance a siege and grind the garrison
+function bombardPort(isl, dmg){
+  const seed = isl.port.seed, now = world.elapsed;
+  if (!harbourSiege || harbourSiege.seed !== seed){
+    if ((isl.port._warnT||0) < now - 6){ isl.port._warnT = now;   // one warning shot before you commit — no siege by accident
+      setToast('⚠ Fire on '+isl.port.name+' again to lay siege to her', true); return; }
+    startHarbourSiege(isl);
+  }
+  const def = portDefenseOf(isl);
+  const fst = fortOf(isl) ? fortStateOf(isl) : null, fortHolds = fst && fst.hp > 0;
+  const floor = fortHolds ? def.gmax*0.30 : 0;                     // the keep holds the line — raze it to break them fully
+  def.g = Math.max(floor, def.g - dmg*0.45); def.t = now;
+  addFx(isl.port.dockX + (Math.random()-0.5)*30, isl.port.dockY + (Math.random()-0.5)*30, 'hit');
+}
+function drainGarrison(seed, amt){   // sinking a siege defender breaks the town's will
+  const e = portDefense.get(seed); if (!e) return;
+  const isMe = harbourSiege && harbourSiege.seed === seed;
+  const fst = isMe && fortOf(harbourSiege.isl) ? fortStateOf(harbourSiege.isl) : null;
+  const floor = (fst && fst.hp > 0) ? e.gmax*0.30 : 0;
+  e.g = Math.max(floor, e.g - amt); e.t = world.elapsed;
+}
+function spawnHarbourDefender(from, x, y){
+  let d = null;
+  if (from === 'crown')      d = spawnNpc('patrol', true, x, y);
+  else if (from === 'guild') d = spawnEnemy(Math.random()<0.5?'brig':'corsair', x, y);
+  else if (from === 'redsails') d = spawnEnemy(Math.random()<0.5?'corsair':'brig', x, y);
+  else if (from === 'tide')  d = spawnEnemy('ghost', x, y);
+  else                       d = spawnEnemy('corsair', x, y);      // Shorefolk militia — light and quick
+  if (d){ d.siegeKey = harbourSiege.seed; d.fac = from; d.farT = -999; d.hostile = true; d.provoked = true; d.war = true; }
+  return d;
+}
+function seizePort(isl){
+  const seed = isl.port.seed, from = portBaseFac(isl);
+  const rec = { seed, from, x: isl.port.dockX, y: isl.port.dockY, name: isl.port.name, tax: 0, since: world.elapsed };
+  const fort = fortOf(isl);
+  if (fort){ const st = fortStateOf(isl); st.owner = 'player'; st.hp = fort.max; st.maxHp = fort.max; st.dead = 0; st.aggroT = 0; rec.fortKey = fort.key; }
+  portOwners.set(seed, rec);
+  harbourSiege = null;
+  repAdj(from, -12);
+  if (from !== 'guild' && repOf('guild') >= 20) setToast('⚑ '+isl.port.name+' is yours — the Guild eyes your rising banner');
+  SFX.horn(); addShake(5);
+  setToast('⚑ '+isl.port.name+' strikes her colours — she flies your banner now!', true);
+}
+function stepHarbourSiege(dt){
+  if (!harbourSiege) return;
+  const s = harbourSiege, isl = s.isl;
+  if (isMyPort(isl)){ harbourSiege = null; return; }               // already taken (e.g. via another path)
+  const d = Math.hypot(wrapDX(s.x, ship.x), s.y - ship.y);
+  if (d > 2400){ harbourSiege = null; setToast('You break off the siege of '+s.name+' — her garrison will man back up'); return; }
+  const def = portDefenseOf(isl);
+  const live = enemies.filter(e=>!e.dead && e.siegeKey===s.seed).length + npcs.filter(n=>!n.dead && n.siegeKey===s.seed).length;
+  const fst = fortOf(isl) ? fortStateOf(isl) : null, fortDown = !fst || fst.hp <= 0;
+  // defender waves keep coming while the garrison stands
+  if (def.g > 0){
+    s.waveT -= dt;
+    if (s.waveT <= 0 && d < 1900){
+      s.waveT = 13 + Math.random()*7;
+      if (live < 4){ const from = s.from;
+        for (let k=0;k<2;k++){ const a=Math.random()*TAU; spawnHarbourDefender(from, s.x + Math.cos(a)*520, s.y + Math.sin(a)*420); } }
+    }
+  }
+  // control fills only when the garrison is broken, the fort is down, and no defenders swim
+  if (def.g <= 0 && live === 0 && fortDown){
+    if (d < 1100){ s.control += dt; if (s.control >= s.ctrlMax){ seizePort(isl); return; } }
+    else s.control = Math.max(0, s.control - dt*0.6);
+  } else {
+    s.control = Math.max(0, s.control - dt*1.5);
+  }
+}
+
+/* ---- reprisals — the dispossessed come to retake your harbours (V1.2). Answer
+   the call and sink the raiders, or the town reverts to its old banner. ---- */
+let reprisal = null, reprisalCd = 420;
+function revertPort(seed){
+  const rec = portOwners.get(seed); if (!rec) return;
+  portOwners.delete(seed);
+  if (rec.fortKey){ const st = fortState.get(rec.fortKey); if (st){ st.owner = undefined; st.fac = rec.from; } }
+  setToast('☠ '+rec.name+' is lost — the '+FACTIONS[rec.from].adj+' banner flies there once more', true);
+}
+function stepReprisals(dt){
+  if (!portOwners.size){ reprisal = null; return; }
+  if (!reprisal){
+    reprisalCd -= dt;
+    if (reprisalCd <= 0){
+      reprisalCd = 360 + Math.random()*360;
+      if (truceActive()) return;
+      const recs = [...portOwners.values()], rec = recs[Math.floor(Math.random()*recs.length)];
+      reprisal = { seed: rec.seed, rec, t: 200, spawned: false };
+      setToast('⚔ The '+FACTIONS[rec.from].adj+' move to retake '+rec.name+' — make sail and defend her!', true);
+    }
+    return;
+  }
+  reprisal.t -= dt;
+  const rec = reprisal.rec, near = Math.hypot(wrapDX(rec.x, ship.x), rec.y - ship.y) < 2600;
+  if (near && !reprisal.spawned){
+    reprisal.spawned = true;
+    const hx = rec.x + Math.round((ship.x - rec.x)/WORLD_W)*WORLD_W;
+    for (let k=0;k<2;k++){ const a=Math.random()*TAU;
+      const e = rec.from==='crown' ? spawnNpc('patrol', true, hx+Math.cos(a)*440, rec.y+Math.sin(a)*360)
+                                   : spawnEnemy(k?'brig':'corsair', hx+Math.cos(a)*440, rec.y+Math.sin(a)*360);
+      if (e){ e.reprisalKey = rec.seed; e.fac = rec.from; e.farT = -999; e.hostile = true; e.provoked = true; e.war = true; } }
+  }
+  if (reprisal.spawned){
+    if (!enemies.some(e=>!e.dead && e.reprisalKey===rec.seed) && !npcs.some(n=>!n.dead && n.reprisalKey===rec.seed)){
+      setToast(rec.name+' holds — your banner stays', true); reprisal = null; return; }
+  }
+  if (reprisal.t <= 0){
+    if (!reprisal.spawned){ revertPort(reprisal.seed); }           // you never came — the town is retaken
+    else setToast('The raiders break off '+rec.name+' — she holds');
+    reprisal = null;
+  }
+}
+function ownedPortCount(){ let n = 0; for (const rec of portOwners.values()) if (!rec.fortKey) n++; return n; }   // fortified harbours already count via playerFortCount
+// tribute — your harbours pay into the coffers on a slow timer (V1.2, "passive tax income")
+let taxRemitT = 90;
+function stepHarbours(dt){
+  if (!portOwners.size) return;
+  for (const rec of portOwners.values()) rec.tax = (rec.tax||0) + dt * 0.22;   // ~185 coin / game-day / harbour
+  taxRemitT -= dt;
+  if (taxRemitT <= 0){
+    taxRemitT = 90;
+    let sum = 0; for (const rec of portOwners.values()){ sum += Math.floor(rec.tax); rec.tax -= Math.floor(rec.tax); }
+    if (sum > 0){ earn(sum); setToast('♦ Tribute from your harbours — +'+sum+' coin'); }
   }
 }
 function stepForts(dt){
@@ -1193,7 +1353,7 @@ function stepFleetRoutes(dt){
 /* how many escorts you may lead — grows with your maritime holdings (claimed
    ruins + raised outposts + a founded banner). An empire fields a bigger fleet. */
 function playerFortCount(){ let n = 0; fortState.forEach(st => { if (st.owner === 'player' && st.hp > 0) n++; }); return n; }
-function fleetCap(){ return clamp(2 + playerFortCount() + (player.banner ? 1 : 0), 2, 6); }
+function fleetCap(){ return clamp(2 + playerFortCount() + ownedPortCount() + (player.banner ? 1 : 0), 2, 8); }
 function buyEscort(cls){
   const cap = fleetCap();
   if (player.fleet.length >= cap){ setToast('Your fleet is at its limit ('+cap+') — take more holds to lead more ships'); return; }
@@ -3852,6 +4012,8 @@ function drawGuides(){
   if (waypoint) drawGuide(waypoint.x, waypoint.y, 'rgba(120,240,220,0.9)', 'Waypoint');
   if (war && Math.hypot(war.x-ship.x, war.y-ship.y) < 6000) drawGuide(war.x, war.y, 'rgba(232,120,90,0.9)', '⚔ contested waters');
   if (player.hold){ const hd = holdDist(ship.x, ship.y); if (hd > 400 && hd < 7000) drawGuide(holdNearestX(), player.hold.y, 'rgba(255,217,138,0.9)', '⌂ stronghold'); }
+  if (harbourSiege){ const hx = harbourSiege.x + Math.round((ship.x - harbourSiege.x)/WORLD_W)*WORLD_W; drawGuide(hx, harbourSiege.y, 'rgba(232,120,90,0.95)', '⚔ '+harbourSiege.name); }
+  if (reprisal && reprisal.rec){ const rx = reprisal.rec.x + Math.round((ship.x - reprisal.rec.x)/WORLD_W)*WORLD_W; if (Math.hypot(rx-ship.x, reprisal.rec.y-ship.y) < 9000) drawGuide(rx, reprisal.rec.y, 'rgba(232,120,90,0.95)', '⚔ defend '+reprisal.rec.name); }
 }
 function drawBossBar(){
   const b = enemies.find(e=>(e.boss||e.miniboss) && !e.dead && Math.hypot(e.x-ship.x, e.y-ship.y) < 900); if (!b) return;   // the bar appears when the terror does
@@ -3861,6 +4023,25 @@ function drawBossBar(){
   ctx.fillStyle='#b03050'; ctx.fillRect(x,y+10,w*clamp(b.hp/b.maxhp,0,1),9);
   ctx.fillStyle='#e9dec6'; ctx.font=fnt(12); ctx.textAlign='center'; ctx.textBaseline='bottom';
   ctx.fillText(b.miniboss ? b.mb.name.replace(/^the /i,'THE ').toUpperCase() : 'LEVIATHAN OF THE DEEP', W/2, y+6);
+  ctx.restore();
+}
+function drawSiegeBar(){
+  if (!harbourSiege) return;
+  const s = harbourSiege, def = portDefense.get(s.seed); if (!def) return;
+  const w = Math.min(440, W-80), x = (W-w)/2, y = 78;
+  const fst = fortOf(s.isl) ? fortStateOf(s.isl) : null, fortUp = fst && fst.hp > 0;
+  ctx.save();
+  ctx.fillStyle='rgba(10,18,28,0.74)'; roundRect(x-8,y-8,w+16,48,6); ctx.fill();
+  ctx.fillStyle='rgba(0,0,0,0.42)'; ctx.fillRect(x,y+11,w,8);
+  ctx.fillStyle='#c8443a'; ctx.fillRect(x,y+11,w*clamp(def.g/def.gmax,0,1),8);        // garrison (drains as you break them)
+  ctx.fillStyle='rgba(0,0,0,0.42)'; ctx.fillRect(x,y+22,w,6);
+  ctx.fillStyle='#ffd98a'; ctx.fillRect(x,y+22,w*clamp(s.control/s.ctrlMax,0,1),6);    // control (fills once she's broken)
+  ctx.fillStyle='#e9dec6'; ctx.font=fnt(12); ctx.textAlign='center'; ctx.textBaseline='bottom';
+  ctx.fillText('SIEGE — '+s.name.toUpperCase(), W/2, y+6);
+  ctx.font=fntS(10); ctx.textBaseline='top'; ctx.fillStyle='rgba(233,222,198,0.6)';
+  ctx.fillText(fortUp && def.g <= def.gmax*0.31 ? 'her fort holds the line — raze it to break the garrison'
+             : def.g > 0 ? 'break her garrison — sink her defenders and shell the town'
+             : 'garrison broken — hold her waters to take the harbour', W/2, y+30);
   ctx.restore();
 }
 function drawTouchUI(){
@@ -4146,7 +4327,9 @@ function drawHUD() {
       else if (player.hold && holdDist(ship.x, ship.y) < 280) msg = '⌂  Space to enter your stronghold';
       else if (nearBuildSite()) msg = '⚒  Space to raise an outpost here  ·  '+OUTPOST_COST+'c';
       else { const ga = groundAt(ship.x, ship.y);
-        msg = ga.rich > 0.35 ? 'Space to cast net  ·  rich waters'
+        const town = (!harbourSiege) ? nearbyPortWithin(520) : null;   // a harbour you could put to the sword
+        msg = (town && !isMyPort(town)) ? 'Space to cast net  ·  ⚔ fire on '+town.port.name+' to lay siege'
+            : ga.rich > 0.35 ? 'Space to cast net  ·  rich waters'
             : (ga.ground && stockOf(ga.ground) < 0.3) ? 'Space to cast net  ·  waters fished thin'
             : 'Space to cast net'; }
     }
@@ -4180,7 +4363,7 @@ function drawHUD() {
     ctx.fillStyle='#f4b8c8'; ctx.font=fnt(11); ctx.fillText('♥ Leviathan’s Heart', 32, hy+16); ctx.restore();
   }
 
-  drawBossBar();
+  drawBossBar(); drawSiegeBar();
   if (!ui.mapOpen && !ship.sinking && !ui.port && !ui.inv && !ui.hold) drawActionBar();
   drawCompass(91, H-91, 71);            // bottom-left, mirrors the circular chart's size
   drawMinimap();
@@ -4537,6 +4720,8 @@ function openPort(isl){
   ui.inv = false;
   ship.hp = ship.maxhp;                    // docking patches up the hull
   for (const f of player.fleet) if (!f.route) f.hp = SHIPS[f.cls].hp;   // the yard sees to the escorts at your side (traders patch up on their own legs)
+  if (isMyPort(isl)){ const rec = portOwners.get(isl.port.seed); const due = Math.floor(rec.tax||0);   // your harbour hands over its coffers
+    if (due > 0){ rec.tax -= due; earn(due); setToast('The harbourmaster remits '+due+' coin in tribute'); } }
   if (!player.visited.includes(isl.key)) player.visited.push(isl.key);
   completeDeliveries(isl);                  // fulfil any delivery contracts targeting here
   questEvent('dock');
@@ -5288,7 +5473,7 @@ function drawPort() {
   { const f = portFaction(isl); ctx.textAlign='left'; ctx.font=fnt(18);
     const tw2 = ctx.measureText(pr.name).width;
     ctx.fillStyle=FACTIONS[f].col; ctx.font=fnt(12);
-    ctx.fillText('⚑ '+FACTIONS[f].name+' · '+repWord(repOf(f)), px+64+tw2+18, py+34); }
+    ctx.fillText('⚑ '+FACTIONS[f].name+' · '+(isMyPort(isl) ? 'your harbour' : repWord(repOf(f))), px+64+tw2+18, py+34); }
   // tabs
   const tabDefs=[['market','Market'],['ledger','Ledger'],['ship','Shipyard'],['crew','Crew'],['harbour','Harbour'],['quest','Quests']];   // Hold & Logbook live in the captain's screens (I)
   let txx=px+64;
@@ -5390,6 +5575,14 @@ function stepShots(dt){
           break;
         }
       }
+      if (!hitOne && !s.escort && s.t > 0){                        // shells on the town itself — lay/press a siege (V1.2)
+        const cx2 = Math.floor(s.x/CHUNK), cy2 = Math.floor(s.y/CHUNK);
+        outer2: for (let dyq=-1;dyq<=1;dyq++) for (let dxq=-1;dxq<=1;dxq++)
+          for (const isl of genChunk(cx2+dxq, cy2+dyq).islands){
+            if (!isl.port || isMyPort(isl)) continue;
+            if (Math.hypot(isl.port.dockX-s.x, isl.port.dockY-s.y) < 130){ bombardPort(isl, s.dmg); s.t = -1; addShake(1); break outer2; }
+          }
+      }
     } else {
       // faction shot — the player is only fair game for shooters who meant it
       if (s.vsPlayer !== false && !ship.sinking && Math.hypot(ship.x-s.x, ship.y-s.y) < 18){
@@ -5456,6 +5649,8 @@ function hitEnemy(e, dmg, src='player'){
   if (e.hp <= 0 && !e.dead){ e.dead = true; killEnemy(e, src); }
 }
 function killEnemy(e, src='player'){
+  if (e.siegeKey) drainGarrison(e.siegeKey, 55);                // a fallen defender breaks the town's will
+  if (e.reprisalKey && reprisal && reprisal.seed===e.reprisalKey && !enemies.some(o=>o!==e&&!o.dead&&o.reprisalKey===e.reprisalKey) && !npcs.some(n=>!n.dead&&n.reprisalKey===e.reprisalKey)){ setToast(reprisal.rec.name+' holds — your banner stays', true); reprisal=null; }
   addFx(e.x, e.y, 'burst');
   if (e.boss || e.miniboss) SFX.monsterDeath(0.95);            // a terror's death carries — you were in that fight
   else if (e.ship) sfxWorld(e.x, e.y, v => SFX.sinkEnemy(v), 0.8, 550);
@@ -6634,6 +6829,8 @@ function becomePirate(n){
   for (const o of npcs) if (o.navy && !o.dead && Math.hypot(o.x-ship.x,o.y-ship.y)<650) o.hostile=true;
 }
 function killNpc(n, src='player'){
+  if (n.siegeKey) drainGarrison(n.siegeKey, 55);                // a fallen defender breaks the town's will
+  if (n.reprisalKey && reprisal && reprisal.seed===n.reprisalKey && !enemies.some(o=>!o.dead&&o.reprisalKey===n.reprisalKey) && !npcs.some(o=>o!==n&&!o.dead&&o.reprisalKey===n.reprisalKey)){ setToast(reprisal.rec.name+' holds — your banner stays', true); reprisal=null; }
   addFx(n.x,n.y,'burst');
   sfxWorld(n.x, n.y, v => SFX.sinkEnemy(v), 0.8, 550);
   const purse = n.type==='trader'?110 : n.type==='manowar'?70 : n.type==='merchant'?60 : n.type==='patrol'?40 : n.type==='fisher'?20 : 35;
@@ -6829,7 +7026,8 @@ function update(dt) {
   if (ui.mapOpen || ui.port || ui.settings || ui.naming || ui.inv || ui.hold || ship.sinking) stepShipDrift(dt); else stepShip(dt);
   stepFishing(dt);
   stepFleetRoutes(dt);                                        // routed traders sail even while you're docked (v0.20)
-  if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepSieges(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
+  stepHarbours(dt);                                           // your harbours pay tribute even while you're away (V1.2)
+  if (!ui.mapOpen && !ui.port && !ui.settings && !ui.naming && !ui.inv && !ui.hold){ stepEnemies(dt); stepNpcs(dt); stepWar(dt); stepForts(dt); stepSieges(dt); stepHarbourSiege(dt); stepReprisals(dt); stepEscorts(dt); stepWildlife(dt); stepShots(dt); stepLoot(dt); stepSlicks(dt); }
   stepFx(dt); stepDanger(dt); stepEvents(dt); stepNotoriety(dt); stepAudio(dt);
   achT -= dt; if (achT <= 0){ achT = 1; checkAch(); }
   updateCam(dt);
@@ -6936,7 +7134,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '1.1';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '1.2';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6963,6 +7161,7 @@ function saveGame() {
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
     forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0, e.fac||0]),
     fleet: player.fleet, hold: player.hold, built: player.built||[], vault: player.vault,
+    ports: [...portOwners.values()].map(r=>({seed:r.seed, from:r.from, x:Math.round(r.x), y:Math.round(r.y), name:r.name, tax:Math.round(r.tax||0), fortKey:r.fortKey||0})),
     banner: player.banner||null, truce: player.truce||0, pact: !!player.pact, bossCd: player.bossCd||0, bossCds: player.bossCds||{},
     wx: weather.base, wseq: weather.seq, wtimer: Math.round(weather.timer), wstorm: weather.state==='storm' ? 1 : 0,
     war: war ? { x: Math.round(war.x), y: Math.round(war.y), r: war.r, t: Math.round(war.t) } : null,
@@ -6994,6 +7193,7 @@ function loadGame() {
     (s.forts||[]).forEach(([k,hp,dead,own,rz,fc]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(fc?{fac:fc}:{}), ...(own?{owner:'player'}:{}) }));
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
     player.hold = s.hold || null; player.built = s.built || []; rebuildBuiltForts(); player.vault = s.vault || {};
+    portOwners.clear(); (s.ports||[]).forEach(r=>portOwners.set(r.seed, { seed:r.seed, from:r.from, x:r.x, y:r.y, name:r.name, tax:r.tax||0, since:0, ...(r.fortKey?{fortKey:r.fortKey}:{}) }));
     player.banner = s.banner || null; player.truce = s.truce || 0; player.pact = !!s.pact; player.bossCd = s.bossCd || 0; player.bossCds = s.bossCds || {};
     if (s.wx){ weather.base = s.wx; weather.state = s.wx; weather.seq = s.wseq||0; weather.timer = s.wtimer||20; }   // forecasts survive a reload (v0.19.4)
     if (s.war && s.war.t > 0) war = { x:s.war.x, y:s.war.y, r:s.war.r, t:s.war.t, skirmishT:0.5 };
@@ -7277,6 +7477,10 @@ window.__HS = {
   CULTURES, culture(){ return cultureAt(ship.x, ship.y); },
   escorts, fleet(){ return player.fleet; }, giveEscort(cls='cutter'){ player.fleet.push({ cls, name:pickShipName(), hp:SHIPS[cls].hp }); syncEscorts(); },
   hold(){ return player.hold; }, vault(){ return player.vault; },
+  portOwners, portDefense, fleetCap, harbourSiege(){ return harbourSiege; }, reprisal(){ return reprisal; },
+  siegePort(isl){ isl = isl || nearbyPortWithin(3000); if (isl) startHarbourSiege(isl); return isl && isl.port.name; },
+  seizePort(isl){ isl = isl || nearbyPortWithin(3000); if (isl) seizePort(isl); return isl && isl.port.name; },
+  forceReprisal(){ reprisalCd = 0.01; }, myPorts(){ return [...portOwners.values()]; },
   fortState, nearestFort(){ let best=null,bd=1e9; const cx=Math.floor(ship.x/CHUNK),cy=Math.floor(ship.y/CHUNK);
     for(let dy=-6;dy<=6;dy++)for(let dx=-6;dx<=6;dx++)for(const isl of genChunk(cx+dx,cy+dy).islands){
       if(!fortOf(isl)) continue; const d=Math.hypot(isl.x-ship.x,isl.y-ship.y); if(d<bd){bd=d;best=isl;}}

@@ -7,6 +7,46 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**⚔ V1.2 HARBOUR CONQUEST (2026-07-08 — new system, verified via `__HS`, console
+clean; `GAME_VERSION='1.2'`).** You can now take populated harbours by force. Design
+was user-chosen (blockade-&-battle · all harbours capturable · all four rewards ·
+reprisals on). The loop:
+- **Declare** — fire your cannon on a town (a friendly shot landing <130u of its
+  dock). One **warning shot** ('fire again to lay siege'), the next commits:
+  `startHarbourSiege` (rep −16 with the town's faction, nearby same-faction npcs
+  turn hostile). Context hint 'Space to cast net · ⚔ fire on <town> to lay siege'
+  shows within 520u of any non-owned harbour.
+- **Break the garrison** — each harbour has `portDefense{g,gmax}` (`GARRISON` base
+  by faction + 120 if it has a fort; regenerates ~1.5 game-days when left alone).
+  Drains from **shelling the town** (`bombardPort`, dmg×0.45) and **sinking its
+  defender waves** (`drainGarrison` 55/kill). Defenders sortie in waves of 2 (≤4
+  live, faction-flavoured via `spawnHarbourDefender`, tagged `siegeKey`, cull-proof
+  `war:true`). **Fort-gate:** while the port's fort stands the garrison floors at
+  **30%** — raze the fort first (verified: 300→90 with fort, →0 after razing).
+- **Take it** — garrison 0 + no live defenders + fort down + you within 1100u → a
+  **control meter** (`ctrlMax` 16s) fills; full → `seizePort` (auto). Flips the port
+  to `'you'`, its fort (if any) becomes `owner:'player'`, rep −12 more.
+- **Own it** — `portOwners` Map (seed→rec) overrides `portFaction`→'you' (via new
+  `portBaseFac`/`isMyPort`; base faction still caches on `isl.port.fac` so loss
+  reverts cleanly). Rewards: **tax** (`stepHarbours` accrues ~185c/game-day/port,
+  auto-remits every 90s + `openPort` pays the coffers on docking), **trade discount**
+  (`facBuyMul` 0.9 / `facSellMul` 1.12 at your ports), **fleet cap** (`fleetCap()`
+  now `2 + playerForts + ownedPorts(unfortified) + banner`, ceiling 6→**8**), **safe
+  haven** (docking repairs; a seized fort auto-defends via existing stepForts).
+- **Reprisals** (`stepReprisals`, one at a time, ~6–12 min rolls) — the former owner
+  moves to retake a random owned port; sail there and the attackers spawn (tagged
+  `reprisalKey`) — sink them to hold, or ignore it past the deadline and the town
+  **reverts** (`revertPort`, fort back to `from`). Truce pauses reprisals.
+- **HUD/persist:** `drawSiegeBar` (garrison + control bars + hint under the boss-bar
+  slot), red guide arrows to the besieged town + a reprisal you must defend; chart
+  port dots follow `portFaction` so owned harbours already fly your colour.
+  `player.ports` saved/loaded (rebuilds `portOwners`); `portDefense`/`harbourSiege`/
+  `reprisal` are transient (not persisted — regen/re-declare, like `war`). Debug:
+  `__HS.siegePort()/seizePort()/forceReprisal()/myPorts()/portOwners/harbourSiege()`.
+  **The full take-territory picture now:** claim a razed ruin · build an outpost on
+  empty land (V1.1 #4) · **conquer a populated harbour** — each is a holding that
+  grows your fleet and, for forts, auto-defends; found your faction at a stronghold.
+
 **🩹 V1.1 PLAYTEST-FIX BATCH (2026-07-08 — 9 findings from a 1-hour V1 playtest,
 all fixed & verified via `__HS`, console clean; `GAME_VERSION='1.1'`).** Committed
 as one verified batch. What changed:
