@@ -7,6 +7,24 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🔍 V1.2 HOVER INSPECTOR — v2 (2026-07-08).** Roomier tooltips (shared
+`drawInfoTip(lines,hpFrac,sx,sy,ringR)` with padX15/padY13 + per-line heights),
+now covers **harbours & forts** too, and **stands down in combat**. Structure pass
+in `drawEntityHover` (only when no ship/beast is under the cursor): scans ±1 chunk
+for `isl.port` (project `pierX/pierY`, 56px) and `nearForts` (project `f.px/py`,
+52px) → **harbour** tip (name · 'a harbour of <culture>' · ⚑ faction+standing/'your
+harbour' · dock-or-siege hint / tribute-due) and **fort** tip (Crown Fort / Red Sails
+Hangout / Tidebound Stronghold / Your Stronghold-Outpost · ⚑ faction · guns-hostile/
+defend/neutral · walls bar). `inCombat()` gate hides the whole inspector when
+`cannon.reload>0.25` (just fired), `harbourSiege` active, a boss/terror is up, a
+hostile enemy/npc is within 650u, or you've provoked a fort. Verified: harbour +
+fort tips screenshotted; inCombat true on hostile-within-650u and just-fired, false
+when calm. **Screenshot gotcha compounded here:** the camera lerps toward the ship
+each frame, so setting `cam` to anything ≠ `ship` drifts the view out from under a
+fixed mouse before the screenshot fires — pin with `keys[bindK.anchor]=true` +
+`cam.x=ship.x;cam.y=ship.y` (zero delta), and `graceT=999` to stop ambient spawns
+tripping `inCombat` mid-capture.
+
 **🔍 V1.2 ENTITY HOVER INSPECTOR (2026-07-08 — verified, console clean).** Point
 the cursor at any ship or beast → a tooltip reads what it is, its flag, cargo, and
 hull. `drawEntityHover()` (called in `render()` at raw screen coords after the scaled

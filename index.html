@@ -4178,38 +4178,82 @@ function entHold(e, isNpc){
   if (e.ship) return 'coin & plunder';
   return 'scales & oil';
 }
+// the inspector stands down in a fight — no time to read tags while attacking or under fire
+function inCombat(){
+  if (cannon.reload > 0.25) return true;                        // you just loosed a broadside
+  if (harbourSiege) return true;                                // laying a siege
+  for (const e of enemies){ if (e.dead) continue; if (e.boss||e.miniboss) return true; if (Math.hypot(e.x-ship.x,e.y-ship.y)<650) return true; }
+  for (const n of npcs){ if (!n.dead && n.hostile && Math.hypot(n.x-ship.x,n.y-ship.y)<650) return true; }
+  for (const nf of nearForts){ if (nf.st.aggroT>0 && nf.st.owner!=='player') return true; }   // you provoked a fort's guns
+  return false;
+}
+// shared roomy tooltip (+ optional highlight ring on the thing under the cursor)
+function drawInfoTip(lines, hpFrac, sx, sy, ringR){
+  ctx.save();
+  if (ringR){ ctx.strokeStyle='rgba(255,236,190,0.7)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(sx, sy, ringR, ringR*0.66, 0, 0, TAU); ctx.stroke(); }
+  let w=0, txtH=0; for (const L of lines){ ctx.font=L.f; w=Math.max(w, ctx.measureText(L.t).width); txtH+=L.h; }
+  const padX=15, padY=13, hpH=(hpFrac!=null)?16:0;
+  const boxW=w+padX*2, boxH=txtH+padY*2+hpH;
+  const bx=clamp(mouse.x+20, 8, W-boxW-8), by=clamp(mouse.y+18, 8, H-boxH-8);
+  chromePanel(bx,by,boxW,boxH,{r:7,fw:2});
+  let ly=by+padY; ctx.textAlign='left'; ctx.textBaseline='top';
+  for (const L of lines){ ctx.font=L.f; ctx.fillStyle=L.c; ctx.fillText(L.t, bx+padX, ly); ly+=L.h; }
+  if (hpFrac!=null){ const bw=boxW-padX*2; ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx+padX, ly+4, bw, 7);
+    ctx.fillStyle = hpFrac>0.5?'#9ad17a':hpFrac>0.25?'#e8c47a':'#d64a30'; ctx.fillRect(bx+padX, ly+4, bw*hpFrac, 7); }
+  ctx.restore();
+}
 function drawEntityHover(){
   if (ui.port||ui.inv||ui.mapOpen||ui.hold||ui.build||ui.settings||ui.paused||ui.naming||ship.sinking||showTouchUI) return;
+  if (inCombat()) return;
   const mx=mouse.x, my=mouse.y;
+  // 1) ships & beasts (foreground) — nearest within a tight screen radius
   let best=null, bd=1e9, isNpc=false, isWild=false;
   const test=(arr, np, wild)=>{ for (const e of arr){ if (e.dead || (wild && e.type==='birds')) continue;
     const p=proj(e.x,e.y,6), sx=p[0]*PIXEL, sy=p[1]*PIXEL, rad=clamp((e.r||24)*VIEW*PIXEL, 20, 130);
     const d=Math.hypot(mx-sx,my-sy); if (d<rad && d<bd){ bd=d; best=e; isNpc=np; isWild=wild; } } };
   test(enemies,false,false); test(npcs,true,false); test(wildlife,false,true);
-  if (!best) return;
-  const e=best, p=proj(e.x,e.y,6), sx=p[0]*PIXEL, sy=p[1]*PIXEL, rr=clamp((e.r||24)*VIEW*PIXEL, 18, 120);
-  ctx.save();
-  ctx.strokeStyle='rgba(255,236,190,0.7)'; ctx.lineWidth=2; ctx.beginPath(); ctx.ellipse(sx, sy, rr, rr*0.66, 0, 0, TAU); ctx.stroke();
-  const fac = isWild ? null : (e.fac || (isNpc?facOfNpc(e):facOfEnemy(e))), F = fac?FACTIONS[fac]:null;
-  const mood = isWild ? 'a creature of the sea'
-             : (!isNpc ? 'hostile' : (e.hostile ? (e.navy?'navy — hunting you':'hostile') : ((e.warned||e.provoked)?'wary of you':'neutral · leave her be')));
-  const lines=[];
-  lines.push({ t: entName(e, isNpc), c:'#f4ead0', f:fnt(12), h:19 });
-  if (isNpc && e.captain) lines.push({ t:e.captain, c:'rgba(233,222,198,0.62)', f:fntS(10), h:15 });
-  if (F) lines.push({ t:'⚑ '+F.name+'  ·  '+mood, c:F.col, f:fntS(10), h:15 });
-  else lines.push({ t:mood, c:'rgba(159,209,232,0.72)', f:fntS(10), h:15 });
-  if (!isWild) lines.push({ t:'Hold: '+entHold(e,isNpc), c:'rgba(233,222,198,0.6)', f:fntS(10), h:15 });
-  let w=0, txtH=0; for (const L of lines){ ctx.font=L.f; w=Math.max(w, ctx.measureText(L.t).width); txtH+=L.h; }
-  const padX=11, padY=8, hpH=isWild?0:11;
-  const boxW=w+padX*2, boxH=txtH+padY*2+hpH;
-  const bx=clamp(mx+18, 8, W-boxW-8), by=clamp(my+16, 8, H-boxH-8);
-  chromePanel(bx,by,boxW,boxH,{r:6,fw:2});
-  let ly=by+padY; ctx.textAlign='left'; ctx.textBaseline='top';
-  for (const L of lines){ ctx.font=L.f; ctx.fillStyle=L.c; ctx.fillText(L.t, bx+padX, ly); ly+=L.h; }
-  if (!isWild){ const bw=boxW-padX*2, hpFrac=clamp((e.hp||0)/(e.maxhp||1),0,1);
-    ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(bx+padX, ly+2, bw, 6);
-    ctx.fillStyle = hpFrac>0.5?'#9ad17a':hpFrac>0.25?'#e8c47a':'#d64a30'; ctx.fillRect(bx+padX, ly+2, bw*hpFrac, 6); }
-  ctx.restore();
+  if (best){
+    const e=best, p=proj(e.x,e.y,6), sx=p[0]*PIXEL, sy=p[1]*PIXEL, rr=clamp((e.r||24)*VIEW*PIXEL, 18, 120);
+    const fac = isWild ? null : (e.fac || (isNpc?facOfNpc(e):facOfEnemy(e))), F = fac?FACTIONS[fac]:null;
+    const mood = isWild ? 'a creature of the sea'
+               : (!isNpc ? 'hostile' : (e.hostile ? (e.navy?'navy — hunting you':'hostile') : ((e.warned||e.provoked)?'wary of you':'neutral · leave her be')));
+    const lines=[{ t: entName(e, isNpc), c:'#f4ead0', f:fnt(12), h:22 }];
+    if (isNpc && e.captain) lines.push({ t:e.captain, c:'rgba(233,222,198,0.62)', f:fntS(10), h:18 });
+    lines.push(F ? { t:'⚑ '+F.name+'  ·  '+mood, c:F.col, f:fntS(10), h:18 } : { t:mood, c:'rgba(159,209,232,0.72)', f:fntS(10), h:18 });
+    if (!isWild) lines.push({ t:'Hold: '+entHold(e,isNpc), c:'rgba(233,222,198,0.6)', f:fntS(10), h:18 });
+    drawInfoTip(lines, isWild?null:clamp((e.hp||0)/(e.maxhp||1),0,1), sx, sy, rr);
+    return;
+  }
+  // 2) harbours & forts (structures) — only when no ship/beast is under the cursor
+  let sBest=null, sKind=null, sd=1e9, sSX=0, sSY=0, sRing=0;
+  const cx=Math.floor(ship.x/CHUNK), cy=Math.floor(ship.y/CHUNK), seen=new Set();
+  for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++) for (const isl of genChunk(cx+dx,cy+dy).islands){
+    if (seen.has(isl) || !isl.port) continue; seen.add(isl);
+    const p=proj(isl.port.pierX, isl.port.pierY, 8), psx=p[0]*PIXEL, psy=p[1]*PIXEL, d=Math.hypot(mx-psx,my-psy);
+    if (d<56 && d<sd){ sd=d; sBest=isl; sKind='port'; sSX=psx; sSY=psy; sRing=46; }
+  }
+  for (const nf of nearForts){ if (nf.st.hp<=0) continue; const p=proj(nf.f.px, nf.f.py, 28), fsx=p[0]*PIXEL, fsy=p[1]*PIXEL, d=Math.hypot(mx-fsx,my-fsy);
+    if (d<52 && d<sd){ sd=d; sBest=nf; sKind='fort'; sSX=fsx; sSY=fsy; sRing=42; } }
+  if (!sBest) return;
+  if (sKind==='port'){
+    const isl=sBest, f=portFaction(isl), F=FACTIONS[f], mine=isMyPort(isl);
+    const lines=[{ t: isl.port.name, c:'#ffd98a', f:fnt(13), h:24 }];
+    lines.push({ t:'a harbour of '+CULTURES[portCulture(isl)].name, c:'rgba(233,222,198,0.6)', f:fntS(10), h:18 });
+    lines.push({ t:'⚑ '+F.name+'  ·  '+(mine?'your harbour':repWord(repOf(f))), c:F.col, f:fntS(10), h:18 });
+    lines.push({ t: mine ? ('tribute: +'+Math.floor((portOwners.get(isl.port.seed)||{}).tax||0)+'c due  ·  dock to collect')
+                         : 'dock (Space) to trade  ·  or fire on her to lay siege', c:'rgba(159,209,232,0.7)', f:fntS(10), h:18 });
+    drawInfoTip(lines, null, sSX, sSY, sRing);
+  } else {
+    const nf=sBest, f=nf.f, st=nf.st, fac=fortFac(f,st), F=FACTIONS[fac], mine=st.owner==='player';
+    const name = mine ? ((player.hold&&player.hold.key===f.key)?'Your Stronghold':'Your Outpost')
+               : fac==='tide'?'Tidebound Stronghold' : fac==='redsails'?'Red Sails Hangout' : (F.adj+' Fort');
+    const hostile = !mine && fortHostile(f, st);
+    const lines=[{ t:name, c: mine?FACTIONS.you.col:'#f4ead0', f:fnt(13), h:24 }];
+    lines.push({ t:'⚑ '+F.name, c:F.col, f:fntS(10), h:18 });
+    lines.push({ t: mine ? 'its guns defend your waters' : hostile ? '⚔ its guns will fire on you' : 'neutral — leave her be',
+                 c: hostile?'#e8916b':'rgba(233,222,198,0.62)', f:fntS(10), h:18 });
+    drawInfoTip(lines, clamp(st.hp/(st.maxHp||f.max||380),0,1), sSX, sSY, sRing);
+  }
 }
 function drawTouchUI(){
   ctx.save();
