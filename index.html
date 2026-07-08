@@ -440,22 +440,31 @@ function landAt(wx, wy) {
 function keepOffLand(o){
   const isl = landAt(o.x, o.y);
   if (!isl) return;
-  const a = Math.atan2(o.y-isl.y, o.x-isl.x), r = islandRadiusAt(isl, a) + 20;
+  const a = Math.atan2(o.y-isl.y, o.x-isl.x), r = islandRadiusAt(isl, a) + 24;
   o.x = isl.x + Math.cos(a)*r; o.y = isl.y + Math.sin(a)*r;
-  if (o.vx !== undefined){                                     // slide along the coast, don't grind into it
+  if (o.vx !== undefined){                                     // slide along the coast + a small seaward shove so grinders unstick
     const tx = -Math.sin(a), ty = Math.cos(a), sp = Math.hypot(o.vx, o.vy);
     const s = (o.vx*tx + o.vy*ty) >= 0 ? 1 : -1;
-    o.vx = tx*s*sp*0.6; o.vy = ty*s*sp*0.6;
+    o.vx = tx*s*sp*0.85 + Math.cos(a)*10; o.vy = ty*s*sp*0.85 + Math.sin(a)*10;
+    o.heading = Math.atan2(o.vy, o.vx);                        // face the way you're actually sliding
   }
 }
-// obstacle steering: probe the intended course; if land lies ahead, pick the nearest
-// clear bearing and slide around the coast (AI ships & beasts — the player steers herself)
-function steerClear(o, dx, dy, look=130){
-  const clear = a => !landAt(o.x+Math.cos(a)*look, o.y+Math.sin(a)*look) && !landAt(o.x+Math.cos(a)*look*0.5, o.y+Math.sin(a)*look*0.5);
+// obstacle steering: probe the intended course; if land lies ahead, follow the coast the
+// SAME way until clear (turn hysteresis kills the flip-flop that pins ships on islands).
+// AI ships & beasts only — the player steers herself.
+function steerClear(o, dx, dy, look=150){
+  const clear = a => !landAt(o.x+Math.cos(a)*look, o.y+Math.sin(a)*look)
+                  && !landAt(o.x+Math.cos(a)*look*0.6, o.y+Math.sin(a)*look*0.6)
+                  && !landAt(o.x+Math.cos(a)*look*0.3, o.y+Math.sin(a)*look*0.3);
   const base = Math.atan2(dy, dx);
-  if (clear(base)) return [dx, dy];
-  for (const off of [0.6, -0.6, 1.2, -1.2, 1.9, -1.9]) if (clear(base+off)) return [Math.cos(base+off), Math.sin(base+off)];
-  return [-dx, -dy];                                           // pocketed in a cove — back straight out
+  if (clear(base)){ o._turn = 0; return [dx, dy]; }
+  const side = o._turn || 1;                                   // keep circling the way we committed to
+  for (const mag of [0.35, 0.7, 1.05, 1.4, 1.75, 2.1, 2.5]) for (const s of [side, -side]){
+    const a = base + s*mag;
+    if (clear(a)){ o._turn = s; return [Math.cos(a), Math.sin(a)]; }
+  }
+  o._turn = -side;                                             // fully pocketed — reverse and back out of the cove
+  return [-dx, -dy];
 }
 // shallow water (island shelves, reef patches, sandbars) — scrapes hulls at speed
 function shoalAt(wx, wy){
@@ -603,7 +612,11 @@ function truceActive(){ return (player.truce||0) > world.elapsed; }
    Tidebound keep a hidden stronghold in the Cursed Deep. Destroy for plunder. ---- */
 const fortState = new Map();   // key → {hp, aggroT, fireT, sortieT, dead}
 let nearForts = [];            // recomputed each step — forts within a chunk of the ship
+const builtForts = new Map();  // islKey → fort def — outposts YOU raised on empty islands (persisted via player.built)
+function islKeyOf(isl){ return isl.key || (Math.round(isl.x)+','+Math.round(isl.y)); }
 function fortOf(isl){
+  const bk = islKeyOf(isl);
+  if (builtForts.has(bk)) return isl.fortDef = builtForts.get(bk);   // a raised outpost overrides — persists through chunk eviction
   if (isl.fortDef !== undefined) return isl.fortDef;
   let def = null;
   if (!isl.rock && !isl.continent && isl.r >= 150){
@@ -717,8 +730,48 @@ function claimRuin(nf){
   if (player.coin < COST){ setToast('The ruin can be yours for '+COST+' coin — you lack it'); return; }
   player.coin -= COST; SFX.horn(); addShake(3);
   nf.st.owner = 'player'; nf.st.hp = nf.f.max; nf.st.maxHp = nf.f.max; nf.st.dead = 0; nf.st.aggroT = 0;
-  player.hold = { key: nf.f.key, x: nf.f.px, y: nf.f.py };
-  setToast('The ruin is rebuilt under your banner — your stronghold stands!');
+  if (!player.hold) player.hold = { key: nf.f.key, x: nf.f.px, y: nf.f.py };
+  setToast(player.hold && player.hold.key===nf.f.key ? 'The ruin is rebuilt under your banner — your stronghold stands!'
+                                                      : 'The ruin flies your colours — another outpost joins your holdings');
+}
+/* ---- build your own outpost (V15) — raise a fort on a bare island (no port,
+   no existing fort). Your first becomes your stronghold; each one after flies
+   your banner, auto-defends its waters, and widens your fleet cap. This is the
+   path to an empire when there's no ruin to claim. ---- */
+const OUTPOST_COST = 1200;
+function nearBuildSite(){
+  const cx = Math.floor(ship.x/CHUNK), cy = Math.floor(ship.y/CHUNK);
+  let best = null, bd = 300;
+  for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++)
+    for (const isl of genChunk(cx+dx, cy+dy).islands){
+      if (isl.rock || isl.continent || isl.port || isl.r < 120) continue;   // needs bare, real land
+      if (fortOf(isl)) continue;                                            // already fortified (incl. one you built)
+      const ang = Math.atan2(ship.y-isl.y, ship.x-isl.x);
+      const edge = Math.hypot(isl.x-ship.x, isl.y-ship.y) - islandRadiusAt(isl, ang);
+      if (edge > 8 && edge < bd){ bd = edge; best = isl; }                  // near the shore, not aground
+    }
+  return best;
+}
+function buildOutpost(isl){
+  if (player.coin < OUTPOST_COST){ setToast('An outpost here costs '+OUTPOST_COST+' coin — you lack it'); return; }
+  const bk = islKeyOf(isl), key = 'ft'+bk;
+  const ang = isl.port ? isl.port.ang+2.2 : hash2(Math.round(isl.x), Math.round(isl.y), 77)*TAU;
+  const def = { fac:'you', max:340, key, px: isl.x + Math.cos(ang)*isl.r*0.42, py: isl.y + Math.sin(ang)*isl.r*0.42 };
+  builtForts.set(bk, def); isl.fortDef = def;
+  player.built = player.built || [];
+  player.built.push({ k:bk, px:Math.round(def.px), py:Math.round(def.py), max:def.max });
+  fortState.set(key, { hp:def.max, maxHp:def.max, aggroT:0, fireT:2, sortieT:0, dead:0, owner:'player' });
+  player.coin -= OUTPOST_COST; SFX.horn(); addShake(3);
+  if (!player.hold){ player.hold = { key, x:def.px, y:def.py };
+    setToast('You raise an outpost — your first stronghold stands! Enter it to store goods and found a banner.'); }
+  else setToast('A new outpost rises under your banner — your holdings grow, and your fleet may grow with them');
+}
+function rebuildBuiltForts(){   // restore player-raised outpost defs from the save so they render & persist
+  builtForts.clear();
+  for (const b of (player.built||[])){
+    const key = 'ft'+b.k;
+    builtForts.set(b.k, { fac:'you', max:b.max||340, key, px:b.px, py:b.py });
+  }
 }
 function stepForts(dt){
   nearForts.length = 0;
@@ -918,7 +971,7 @@ const player = {
   cosUnlocked: { hull:[0], sail:[0], trim:[0], emblem:[0] },
   quest: { step:0, done:false }, hasHeart: false,
   shipClass: 'sloop', shipsOwned: ['sloop'], boatName: '',
-  ammo: {}, ammoSel: 'round', ledger: {}, rep: {}, fleet: [], hold: null, vault: {},
+  ammo: {}, ammoSel: 'round', ledger: {}, rep: {}, fleet: [], hold: null, built: [], vault: {},
   loreFound: [], flotsamTaken: [],
   notoriety: 0, bounty: 0, journeys: {}, achievements: [], sighted: [],
 };
@@ -1071,6 +1124,8 @@ function applyUpgrades(){ ship.maxhp = UP.maxhp(); player.cargoMax = UP.cargo();
 /* Escorts sail in formation off your quarters and fight what you fight.
    player.fleet holds the persistent ships; escorts[] are their live hulls. */
 const escorts = [];
+let fleetFoe = null, fleetFoeT = 0;   // what YOU last struck — your escorts pile on until it's dead or the trail goes cold
+function markFleetFoe(o){ if (o && !o.dead){ fleetFoe = o; fleetFoeT = 16; } }
 const ESCORT_COST = { sloop:500, cutter:800, merchant:1200, frigate:1600 };
 function syncEscorts(){
   escorts.length = 0;
@@ -1102,7 +1157,7 @@ function sendTrading(i){
                           REGIONS[regionAt(mid.x,mid.y)].danger,
                           REGIONS[regionAt(pt.dockX,pt.dockY)].danger);
   const legTime = clamp(best.d/140, 25, 90);
-  const income = Math.round(legTime * (0.35 + danger*0.25) * (1 + SHIPS[f.cls].cargo/50));   // rougher water pays better — and bleeds more
+  const income = Math.round(legTime * (2.4 + danger*2.4) * (1 + SHIPS[f.cls].cargo/40));   // rougher water pays better — and bleeds more; a ship earns back her price in a few round trips
   f.route = { fromName: p0.name, toName: pt.name, legTime, legT: legTime, income, danger: +danger.toFixed(2), back: false };
   syncEscorts();
   setToast('The '+f.name+' begins trading '+p0.name+' ↔ '+pt.name+'  (+'+income+'c per leg)');
@@ -1135,8 +1190,13 @@ function stepFleetRoutes(dt){
     r.back = !r.back; r.legT = r.legTime;
   }
 }
+/* how many escorts you may lead — grows with your maritime holdings (claimed
+   ruins + raised outposts + a founded banner). An empire fields a bigger fleet. */
+function playerFortCount(){ let n = 0; fortState.forEach(st => { if (st.owner === 'player' && st.hp > 0) n++; }); return n; }
+function fleetCap(){ return clamp(2 + playerFortCount() + (player.banner ? 1 : 0), 2, 6); }
 function buyEscort(cls){
-  if (player.fleet.length >= 2){ setToast('Your fleet is full — two escorts is the most you can lead'); return; }
+  const cap = fleetCap();
+  if (player.fleet.length >= cap){ setToast('Your fleet is at its limit ('+cap+') — take more holds to lead more ships'); return; }
   const cost = ESCORT_COST[cls];
   if (player.coin < cost){ setToast('Need '+cost+' coin'); return; }
   player.coin -= cost; SFX.coin();
@@ -1151,6 +1211,7 @@ function dismissEscort(i){
   setToast('The '+f.name+' is paid off and sails for home');
 }
 function stepEscorts(dt){
+  if (fleetFoeT > 0){ fleetFoeT -= dt; if (fleetFoe && fleetFoe.dead) fleetFoeT = 0; }
   for (let i=escorts.length-1; i>=0; i--){
     const e = escorts[i], f = e.f;
     if (e.hitT > 0) e.hitT -= dt;
@@ -1162,16 +1223,28 @@ function stepEscorts(dt){
     e.vx = lerp(e.vx, dx/d*spd, dt*2); e.vy = lerp(e.vy, dy/d*spd, dt*2);
     e.x += e.vx*dt; e.y += e.vy*dt; keepOffLand(e);
     if (Math.hypot(e.vx, e.vy) > 12) e.heading = Math.atan2(e.vy, e.vx);
-    // gunnery — engage the nearest enemy in range with a led shot
+    // gunnery — fight what YOU fight (your quarry), plus anything hostile near you;
+    // help storm a fort you've provoked. Led shots, like your own guns.
     e.fireT -= dt;
     if (e.fireT <= 0){
-      let tgt = null, bd = 380;
-      for (const en of enemies){ if (en.dead) continue; const d2 = Math.hypot(en.x-e.x, en.y-e.y); if (d2 < bd){ bd = d2; tgt = en; } }
-      if (tgt){
+      let tx=0, ty=0, tvx=0, tvy=0, bd=560, kind=null;         // kind: 'ship' | 'npc' | 'fort'
+      if (fleetFoe && !fleetFoe.dead && fleetFoeT > 0){         // your designated quarry — priority + longer reach
+        const q = fleetFoe, d2 = Math.hypot(q.x-e.x, q.y-e.y);
+        if (d2 < 660){ tx=q.x; ty=q.y; tvx=q.vx||0; tvy=q.vy||0; bd=d2; kind = npcs.includes(q) ? 'npc' : 'ship'; }
+      }
+      if (!kind){                                              // otherwise the nearest hostile hull
+        for (const en of enemies){ if (en.dead) continue; const d2 = Math.hypot(en.x-e.x, en.y-e.y); if (d2 < bd){ bd=d2; tx=en.x; ty=en.y; tvx=en.vx; tvy=en.vy; kind='ship'; } }
+        for (const n of npcs){ if (n.dead || !n.hostile) continue; const d2 = Math.hypot(n.x-e.x, n.y-e.y); if (d2 < bd){ bd=d2; tx=n.x; ty=n.y; tvx=n.vx; tvy=n.vy; kind='npc'; } }
+      }
+      if (!kind){                                              // and lend fire to a siege you've started
+        for (const nf of nearForts){ if (nf.st.hp<=0 || nf.st.owner==='player' || nf.st.aggroT<=0) continue;
+          const d2 = Math.hypot(nf.f.px-e.x, nf.f.py-e.y); if (d2 < bd){ bd=d2; tx=nf.f.px; ty=nf.f.py; tvx=0; tvy=0; kind='fort'; } }
+      }
+      if (kind){
         e.fireT = 2.2;
-        const lead = bd/340, la = Math.atan2(tgt.y + tgt.vy*lead - e.y, tgt.x + tgt.vx*lead - e.x);
-        shots.push({ x:e.x, y:e.y, z:8, vx:Math.cos(la)*340, vy:Math.sin(la)*340, vz:70, t:1.5, dmg:16, friendly:true, escort:true, kind:'round' });
-        if (bd < 900) SFX.fire();
+        const lead = bd/340, la = Math.atan2(ty + tvy*lead - e.y, tx + tvx*lead - e.x);
+        shots.push({ x:e.x, y:e.y, z:8, vx:Math.cos(la)*340, vy:Math.sin(la)*340, vz:70, t:1.7, dmg:16, friendly:true, escort:true, kind:'round', pvp:kind==='npc', siege:kind==='fort' });
+        sfxWorld(e.x, e.y, v => SFX.fire(v), 0.5);
       }
     }
   }
@@ -4001,13 +4074,13 @@ function drawHUD() {
     ctx.fillText('⚠ hull straining — fit the ' + wgn.name + ' for these waters', W/2, 40); ctx.restore();
   }
   // shoal scrape warning
-  if (ship.shoal && ship.speed > 55 && !ui.port && !ship.sinking){
+  if (ship.shoal && ship.speed > 45 && !ui.port && !ship.sinking){
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font=fnt(12);
     ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*6) > 0.5 ? '#e8916b' : 'rgba(232,145,107,0.55)';
     ctx.fillText(ship.shoal.kind==='sandbar' ? '⚠ sandbar! — hard aground at speed' : '⚠ shoal water — ease your sail', W/2, wgn ? 66 : 40); ctx.restore();
   }
   // fire aboard / whirlpool grind — name every drain (v0.19.1)
-  let bStack = 40 + (wgn ? 26 : 0) + (ship.shoal && ship.speed > 55 ? 26 : 0);
+  let bStack = 40 + (wgn ? 26 : 0) + (ship.shoal && ship.speed > 45 ? 26 : 0);
   if (ship.burnT > 0 && !ui.port && !ship.sinking){
     ctx.save(); ctx.textAlign='center'; ctx.textBaseline='top'; ctx.font=fnt(12);
     ctx.fillStyle = 0.5+0.5*Math.sin(world.elapsed*6) > 0.5 ? '#e8916b' : 'rgba(232,145,107,0.55)';
@@ -4037,7 +4110,7 @@ function drawHUD() {
     ctx.textAlign='left'; ctx.fillStyle='#f4b8a8'; ctx.font=fnt(11); ctx.fillText('WANTED '+skulls, 32, 172);
     ctx.textAlign='right'; ctx.fillStyle='#ffd98a'; ctx.fillText(player.bounty+' coin', 242, 172);
     ctx.textAlign='left'; ctx.font=fntS(8); ctx.fillStyle='rgba(244,184,168,0.75)';
-    ctx.fillText('pay it off at any Harbour · sinking pirates helps', 32, 190); ctx.restore();
+    ctx.fillText('pay it off at a Harbour — or sink pirates', 32, 190); ctx.restore();
   }
 
   // active contract tracker (top-right, below the weather panel)
@@ -4071,6 +4144,7 @@ function drawHUD() {
       else if (cap) msg = 'Space to hail ' + cap.captain;
       else if (ruin) msg = '⚑  Space to claim the ruin  ·  800c';
       else if (player.hold && holdDist(ship.x, ship.y) < 280) msg = '⌂  Space to enter your stronghold';
+      else if (nearBuildSite()) msg = '⚒  Space to raise an outpost here  ·  '+OUTPOST_COST+'c';
       else { const ga = groundAt(ship.x, ship.y);
         msg = ga.rich > 0.35 ? 'Space to cast net  ·  rich waters'
             : (ga.ground && stockOf(ga.ground) < 0.3) ? 'Space to cast net  ·  waters fished thin'
@@ -4486,6 +4560,8 @@ function handleAction() {
   const ruin = nearRuin();
   if (ruin){ claimRuin(ruin); return; }
   if (player.hold && holdDist(ship.x, ship.y) < 280){ openHold(); return; }
+  const site = nearBuildSite();
+  if (site){ buildOutpost(site); return; }
   toggleFishing();
 }
 function doBuy(isl, id) {
@@ -4520,6 +4596,26 @@ function drawBtn(b){
 }
 function drawTabBtn(b){
   brassButton(b.x,b.y,b.w,b.h,b.label,{ hov:hit(b), active:b.active });
+}
+/* hover help — if the cursor rests on a button carrying a .tip, float a wrapped
+   explanation just above it (clamped on-screen). One call after a screen's buttons
+   are drawn covers that whole screen. Helps players make informed choices. */
+function drawButtonTip(list){
+  let b = null; for (const x of list) if (x.tip && hit(x)){ b = x; break; }
+  if (!b) return;
+  ctx.save();
+  ctx.font = fntS(10);
+  const maxW = 260, words = b.tip.split(' '), lines = []; let cur = '';
+  for (const w of words){ const t = cur ? cur+' '+w : w; if (ctx.measureText(t).width > maxW && cur){ lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur);
+  let tw = 0; for (const l of lines) tw = Math.max(tw, ctx.measureText(l).width);
+  const padX = 10, padY = 8, lh = 15, boxW = tw + padX*2, boxH = lines.length*lh + padY*2;
+  let bx = clamp(b.x + b.w/2 - boxW/2, 8, W - boxW - 8);
+  let by = b.y - boxH - 8; if (by < 8) by = b.y + b.h + 8;   // flip below if no room above
+  chromePanel(bx, by, boxW, boxH, { r:6, fw:2 });
+  ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillStyle='#f1e4c2';
+  for (let i=0;i<lines.length;i++) ctx.fillText(lines[i], bx+padX, by+padY+i*lh);
+  ctx.restore();
 }
 // which goods this market lists: staples always; exotics only at their source (or in your hold);
 // endemic fish only once you carry some — keeps the list inside the panel with 27 goods defined
@@ -4639,7 +4735,7 @@ function drawShipwrightTab(ax, ay, aw){
 function drawCrewTab(isl, ax, ay, aw){
   ctx.textBaseline='top'; ctx.textAlign='left';
   // --- your fleet (V14) — escorts that sail and fight with you ---
-  ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('YOUR FLEET  ('+player.fleet.length+' / 2 escorts)', ax, ay);
+  ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('YOUR FLEET  ('+player.fleet.length+' / '+fleetCap()+' escorts — raise holds to lead more)', ax, ay);
   let ry = ay+22;
   if (!player.fleet.length){ ctx.fillStyle='rgba(233,222,198,0.35)'; ctx.font=fnt(12); ctx.fillText('you sail alone', ax+6, ry+2); ry+=26; }
   player.fleet.forEach((f,i)=>{
@@ -4653,16 +4749,22 @@ function drawCrewTab(isl, ax, ay, aw){
     ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(bhx-1, ry+7, 112, 10);
     ctx.strokeStyle='rgba(20,12,6,0.8)'; ctx.lineWidth=1; ctx.strokeRect(bhx-1, ry+7, 112, 10);
     ctx.fillStyle='#9ad17a'; ctx.fillRect(bhx+1, ry+9, Math.round(108*clamp(f.hp/SHIPS[f.cls].hp,0,1)), 6);
-    portButtons.push(mkBtn(ax+aw-dbw-tw-6, ry, tw, 24, tlbl, (k=>()=>{ player.fleet[k] && player.fleet[k].route ? recallTrader(k) : sendTrading(k); })(i)));
-    portButtons.push(mkBtn(ax+aw-dbw, ry, dbw, 24, 'Dismiss', (k=>()=>dismissEscort(k))(i)));
+    { const b = mkBtn(ax+aw-dbw-tw-6, ry, tw, 24, tlbl, (k=>()=>{ player.fleet[k] && player.fleet[k].route ? recallTrader(k) : sendTrading(k); })(i));
+      b.tip = f.route ? 'Call the '+f.name+' off her trade run — she rejoins your escort and fights at your side'
+                      : 'Send the '+f.name+' to run cargo between two nearby ports on her own — she earns coin each leg but leaves your escort (raiders may hit her)';
+      portButtons.push(b); }
+    { const b = mkBtn(ax+aw-dbw, ry, dbw, 24, 'Dismiss', (k=>()=>dismissEscort(k))(i));
+      b.tip = 'Pay off the '+f.name+' and send her home — frees a fleet berth (no refund)'; portButtons.push(b); }
     ry += f.route ? 36 : 30;
   });
-  if (player.fleet.length < 2){
-    ctx.font=fntS(9); ctx.fillStyle='rgba(233,222,198,0.45)'; ctx.fillText('hire another escort:', ax+6, ry+2); ry+=18;
+  if (player.fleet.length < fleetCap()){
+    ctx.font=fntS(9); ctx.fillStyle='rgba(233,222,198,0.45)'; ctx.fillText('hire another escort — sails and fights at your side:', ax+6, ry+2); ry+=18;
     let bx2 = ax+6;
     for (const cls of Object.keys(ESCORT_COST)){
       const lbl = SHIPS[cls].name+' '+ESCORT_COST[cls]+'c', w = btnW(lbl,10,8);
-      portButtons.push(mkBtn(bx2, ry, w, 24, lbl, (c=>()=>buyEscort(c))(cls))); bx2 += w+6;
+      const b = mkBtn(bx2, ry, w, 24, lbl, (c=>()=>buyEscort(c))(cls));
+      b.tip = 'Buy a '+SHIPS[cls].name+' to sail in your wake — it screens you and fires on whatever you fight';
+      portButtons.push(b); bx2 += w+6;
     }
     ry += 32;
   }
@@ -4725,16 +4827,18 @@ function drawHarbourTab(isl, ax, ay, aw){
     ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.5)'; ctx.fillText('DIPLOMACY', ax, ry); ry += 20;
     if (truceLeft > 0){ ctx.font=fnt(11); ctx.fillStyle='#e8c47a'; ctx.fillText('☠ Red Sails tribute paid — they let you pass ('+Math.ceil(truceLeft/840)+'d left)', ax+4, ry+4); }
     else { ctx.font=fnt(11); ctx.fillStyle='#e9dec6'; ctx.fillText('Pay tribute to the Red Sails — their hulls pass you by for 2 days', ax+4, ry+4);
-      const w = btnW('Pay 250c',11,10); portButtons.push(mkBtn(ax+aw-w, ry, w, 26, 'Pay 250c', ()=>{
+      const w = btnW('Pay 250c',11,10); const b = mkBtn(ax+aw-w, ry, w, 26, 'Pay 250c', ()=>{
         if (player.coin < 250){ setToast('Not enough coin'); return; }
-        player.coin -= 250; player.truce = world.elapsed + 1680; SFX.coin(); setToast('Tribute paid — the Red Sails will let you pass'); })); }
+        player.coin -= 250; player.truce = world.elapsed + 1680; SFX.coin(); setToast('Tribute paid — the Red Sails will let you pass'); });
+      b.tip = 'Pay the Red Sails 250 coin for 2 days of safe passage — their ships (and raiders on your trade routes) leave you be'; portButtons.push(b); }
     ry += 30;
     if (player.pact){ ctx.font=fnt(11); ctx.fillStyle='#e8c47a'; ctx.fillText('⚖ Guild trade-pact in force — better prices at Guild harbours', ax+4, ry+4); }
     else if (portFaction(isl)==='guild'){
       if (repOf('guild') >= 20){ ctx.font=fnt(11); ctx.fillStyle='#e9dec6'; ctx.fillText('Sign a Guild trade-pact — +8% on all sales at Guild harbours', ax+4, ry+4);
-        const w = btnW('Sign · 400c',11,10); portButtons.push(mkBtn(ax+aw-w, ry, w, 26, 'Sign · 400c', ()=>{
+        const w = btnW('Sign · 400c',11,10); const b = mkBtn(ax+aw-w, ry, w, 26, 'Sign · 400c', ()=>{
           if (player.coin < 400){ setToast('Not enough coin'); return; }
-          player.coin -= 400; player.pact = true; SFX.upgrade(); setToast('The pact is signed — the Guild honours its friends'); })); }
+          player.coin -= 400; player.pact = true; SFX.upgrade(); setToast('The pact is signed — the Guild honours its friends'); });
+        b.tip = 'A one-time 400 coin pact — permanently earns +8% on everything you sell at Guild harbours (lost if your Guild standing turns negative)'; portButtons.push(b); }
       else { ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.4)'; ctx.fillText('the Guild would offer a trade-pact to a friend (standing +20)', ax+4, ry+5); }
     } else { ctx.font=fntS(10); ctx.fillStyle='rgba(233,222,198,0.4)'; ctx.fillText('trade-pacts are signed at Guild harbours', ax+4, ry+5); }
     ry += 34; }
@@ -5070,10 +5174,14 @@ function drawHold(){
       holdButtons.push({ x:sx, y:by, w:24, h:18, noDraw:true, action:(cc=>()=>{ FACTIONS.you.col = cc; if (player.banner) player.banner.col = cc; })(c) });
     });
     const lbl = player.banner ? 'Rename banner' : 'Raise your banner', w2 = btnW(lbl,11,10);
-    holdButtons.push(mkBtn(px+48+SWATCHES.length*30+14, by-6, w2, 30, lbl, ()=>{ ui.naming = { text: player.banner ? player.banner.name : 'The '+player.boatName+' Banner', kind:'faction' }; clearKeys(); })); }
+    const bb = mkBtn(px+48+SWATCHES.length*30+14, by-6, w2, 30, lbl, ()=>{ ui.naming = { text: player.banner ? player.banner.name : 'The '+player.boatName+' Banner', kind:'faction' }; clearKeys(); });
+    bb.tip = player.banner ? 'Rename your faction and recolour its flag — your escorts and every hold you own fly it'
+                           : 'Found your own faction — name it and pick a flag colour. Your escorts and holds fly your banner, and a raised banner lets you lead one more escort.';
+    holdButtons.push(bb); }
   { const w = btnW('Back to the helm  (Esc)',11,10), b = mkBtn(px+pw-48-w, py+ph-56, w, 32, 'Back to the helm  (Esc)', ()=>{ ui.hold=false; clearKeys(); });
     holdButtons.push(b); }
   for (const b of holdButtons){ if (!b.noDraw) drawBtn(b); }
+  drawButtonTip(holdButtons);
   ctx.restore();
 }
 /* the price ledger — its own full-width tab (port + captain's screens) */
@@ -5197,6 +5305,7 @@ function drawPort() {
   if (fishing.toastT>0){ ctx.textAlign='right'; ctx.textBaseline='alphabetic'; ctx.fillStyle='#ffd98a'; ctx.font=fnt(12); ctx.fillText(fishing.toast, px+pw-64, py+ph-66); ctx.textAlign='left'; }   // sits clear of the ammo strip AND Set sail
   { const w=btnW('Set sail  (Esc)',12,10); portButtons.push(mkBtn(px+pw-64-w, py+ph-60, w, 36, 'Set sail  (Esc)', closePort, true)); }
   for (const b of portButtons){ if (b.active===undefined && !b.noDraw) drawBtn(b); }
+  drawButtonTip(portButtons);
 }
 
 /* ============================ COMBAT / DANGER ============================= */
@@ -5269,9 +5378,9 @@ function stepShots(dt){
     if (s.friendly){
       let hitOne = false;
       for (const e of enemies){ if (e.dead || e.diveT > 0) continue; if (Math.hypot(e.x-s.x, e.y-s.y) < e.r){ hitEnemy(e, s.dmg); applyShotFx(e, s.kind, 'player'); s.t = -1; addFx(s.x,s.y,'hit'); hitOne = true; break; } }
-      if (!hitOne && !s.escort) for (const n of npcs){ if (n.dead) continue; if (Math.hypot(n.x-s.x, n.y-s.y) < n.r){ hitNpc(n, s.dmg); applyShotFx(n, s.kind, 'player'); s.t = -1; addFx(s.x,s.y,'hit'); hitOne = true; break; } }
-      if (!hitOne && !s.escort && s.t > 0) for (const nf of nearForts){    // siege — your iron against their stone
-        if (nf.st.hp <= 0) continue;
+      if (!hitOne && (!s.escort || s.pvp)) for (const n of npcs){ if (n.dead) continue; if (Math.hypot(n.x-s.x, n.y-s.y) < n.r){ hitNpc(n, s.dmg); applyShotFx(n, s.kind, 'player'); s.t = -1; addFx(s.x,s.y,'hit'); hitOne = true; break; } }
+      if (!hitOne && (!s.escort || s.siege) && s.t > 0) for (const nf of nearForts){    // siege — your iron against their stone
+        if (nf.st.hp <= 0 || (s.escort && nf.st.owner==='player')) continue;
         if (Math.hypot(nf.f.px-s.x, nf.f.py-s.y) < 34 && s.z < 46){
           if (nf.st.aggroT <= 0){ repAdj(nf.f.fac, -10); setToast('You fire on a '+FACTIONS[nf.f.fac].adj+' fort!');
             nf.st.fireT = Math.max(nf.st.fireT, 1.5); }   // one readable beat before the guns answer
@@ -5341,6 +5450,7 @@ function spawnEnemy(type, px, py){
   const e2 = enemies[enemies.length-1]; e2.fac = facOfEnemy(e2); return e2;
 }
 function hitEnemy(e, dmg, src='player'){
+  if (src==='player') markFleetFoe(e);        // your escorts join the fight you pick
   e.hp -= dmg; e.hitT = 0.18;
   sfxWorld(e.x, e.y, v => SFX.hit(v), 0.7);
   if (e.hp <= 0 && !e.dead){ e.dead = true; killEnemy(e, src); }
@@ -5719,14 +5829,20 @@ function stepDanger(dt){
   }
   const wg = waterGate();
   if (wg && !ship.sinking && !ui.port){ ship.hp -= 5*dt; ship.dmgFlash = Math.max(ship.dmgFlash, 0.25); if (ship.hp <= 0){ ship.hp = 0; startSink(); } }
-  // shoal scrape — shallow water only bites when you cross it too fast (ease in to dock safely)
-  if (ship.shoal && !ship.sinking && !ui.port && ship.speed > 55){
-    const sev = (ship.speed - 55) * (ship.shoal.kind==='sandbar' ? 0.075 : 0.05);
-    ship.hp -= sev * dt; ship.dmgFlash = Math.max(ship.dmgFlash, 0.2);
-    if (world.elapsed - (ship.scrapeT||0) > 1.5){ ship.scrapeT = world.elapsed; SFX.scrape(); }   // grinding hull, throttled
-    if (Math.random() < dt*6){ addFx(ship.x + (Math.random()-0.5)*20, ship.y + 12 + Math.random()*8, 'debris'); addShake(0.7); }
+  // shoal scrape — shallow water TEARS a hull open at speed now (ease in to dock; charge a reef and you'll founder)
+  if (ship.shoal && !ship.sinking && !ui.port && ship.speed > 30){
+    const sandbar = ship.shoal.kind==='sandbar';
+    const mult = sandbar ? 0.28 : 0.19;                                        // reefs & island shelves both bite hard
+    ship.hp -= (ship.speed - 30) * mult * dt; ship.dmgFlash = Math.max(ship.dmgFlash, 0.25);
+    if (!ship.wasShoal && ship.speed > 60){                                    // the first crunch when you strike shallows fast
+      ship.hp -= clamp((ship.speed - 60) * mult * 1.3, 6, sandbar ? 42 : 30);
+      addShake(sandbar ? 5.5 : 4); SFX.collision();
+    }
+    if (world.elapsed - (ship.scrapeT||0) > 1.2){ ship.scrapeT = world.elapsed; SFX.scrape(); }   // grinding hull, throttled
+    if (Math.random() < dt*11){ addFx(ship.x + (Math.random()-0.5)*20, ship.y + 12 + Math.random()*8, 'debris'); addShake(1.0); }
     if (ship.hp <= 0){ ship.hp = 0; startSink(); }
   }
+  ship.wasShoal = !!ship.shoal;
   // whirlpool core — grinding damage at the eye; escape by sailing across the spiral
   if (ship.flow && ship.flow.kind==='whirl' && !ship.sinking && !ui.port){
     const d = Math.hypot(ship.x-ship.flow.x, ship.y-ship.flow.y);
@@ -6494,6 +6610,7 @@ function stepNpcs(dt){
   for (let i=npcs.length-1;i>=0;i--) if (npcs[i].dead) npcs.splice(i,1);
 }
 function hitNpc(n, dmg, src='player', by){
+  if (src==='player') markFleetFoe(n);        // your escorts pile onto whatever you fire on, merchant or navy
   n.hp-=dmg; n.hitT=0.18;
   sfxWorld(n.x, n.y, v => SFX.hit(v), 0.7);
   if (src==='player' && !n.provoked){
@@ -6819,7 +6936,7 @@ function frame(ts) {
 }
 
 /* ------------------------------- save ------------------------------------ */
-const GAME_VERSION = '1.0';                 // bump on notable batches — stamped into every save
+const GAME_VERSION = '1.1';                 // bump on notable batches — stamped into every save
 const SAVE_SLOTS = 4;                          // separate voyages — different players, different eras
 const slotKey = s => 'helmsong_save_' + s;
 let activeSlot = (() => { try { return clamp(parseInt(localStorage.getItem('helmsong_slot'))||1, 1, SAVE_SLOTS); } catch(e){ return 1; } })();
@@ -6845,7 +6962,7 @@ function saveGame() {
     ammo:player.ammo, ammoSel:player.ammoSel, ledger:player.ledger, rep:player.rep,
     stock: Array.from(groundStock.entries()).slice(-300).map(([k,e])=>[k, +e.s.toFixed(3), Math.round(e.t)]),
     forts: Array.from(fortState.entries()).slice(-200).map(([k,e])=>[k, Math.round(e.hp), Math.round(e.dead), e.owner==='player'?1:0, e.razes||0, e.fac||0]),
-    fleet: player.fleet, hold: player.hold, vault: player.vault,
+    fleet: player.fleet, hold: player.hold, built: player.built||[], vault: player.vault,
     banner: player.banner||null, truce: player.truce||0, pact: !!player.pact, bossCd: player.bossCd||0, bossCds: player.bossCds||{},
     wx: weather.base, wseq: weather.seq, wtimer: Math.round(weather.timer), wstorm: weather.state==='storm' ? 1 : 0,
     war: war ? { x: Math.round(war.x), y: Math.round(war.y), r: war.r, t: Math.round(war.t) } : null,
@@ -6876,7 +6993,7 @@ function loadGame() {
     player.rep = s.rep || {};
     (s.forts||[]).forEach(([k,hp,dead,own,rz,fc]) => fortState.set(k, { hp, aggroT:0, fireT:2, sortieT:0, dead, razes: rz||0, ...(fc?{fac:fc}:{}), ...(own?{owner:'player'}:{}) }));
     player.fleet = (s.fleet||[]).filter(f => SHIPS[f.cls]); syncEscorts();
-    player.hold = s.hold || null; player.vault = s.vault || {};
+    player.hold = s.hold || null; player.built = s.built || []; rebuildBuiltForts(); player.vault = s.vault || {};
     player.banner = s.banner || null; player.truce = s.truce || 0; player.pact = !!s.pact; player.bossCd = s.bossCd || 0; player.bossCds = s.bossCds || {};
     if (s.wx){ weather.base = s.wx; weather.state = s.wx; weather.seq = s.wseq||0; weather.timer = s.wtimer||20; }   // forecasts survive a reload (v0.19.4)
     if (s.war && s.war.t > 0) war = { x:s.war.x, y:s.war.y, r:s.war.r, t:s.war.t, skirmishT:0.5 };

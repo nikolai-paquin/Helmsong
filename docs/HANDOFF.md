@@ -7,6 +7,65 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🩹 V1.1 PLAYTEST-FIX BATCH (2026-07-08 — 9 findings from a 1-hour V1 playtest,
+all fixed & verified via `__HS`, console clean; `GAME_VERSION='1.1'`).** Committed
+as one verified batch. What changed:
+1. **WANTED strip overflow** — the "pay it off…" help line spilled past the 240px
+   panel frame (measured to 269px). Shortened to 'pay it off at a Harbour — or sink
+   pirates' (200px), fits with margin.
+2. **Escorts now fight what YOU fight.** New `fleetFoe`/`fleetFoeT` quarry set in
+   `hitEnemy`/`hitNpc` when `src==='player'` (via `markFleetFoe`) — your escorts
+   pile onto whatever you strike (enemy, npc, boss) for 16s. `stepEscorts` gunnery
+   rewritten: priority = your quarry (reach 660) → nearest enemy → nearest **hostile
+   npc** → an **aggroed fort you're besieging**; range 380→560. Escort shots carry
+   `pvp` (may hit npcs) / `siege` (may hit forts) so they can actually damage your
+   quarry; `stepShots` friendly branch gates on `(!s.escort || s.pvp/siege)` and
+   siege shots skip your OWN forts. Verified: quarry npc took 48 from escort pvp
+   fire; enemy took 32 with no quarry; an un-marked peaceful merchant took 0 (no
+   accidental piracy).
+3. **Button hover tooltips** (`drawButtonTip(list)` + `b.tip`) — a wrapped gold
+   panel floats over any hovered button carrying `.tip`. Wired on Send out / Recall
+   / Dismiss / hire-escort (Crew tab), Red Sails tribute + Guild pact (Harbour), and
+   Raise/Rename banner (stronghold). Called after buttons draw in `drawPort` +
+   `drawHold`. Add a tip to any button by setting `b.tip='…'`.
+4. **Build your own outposts (empire path).** `nearBuildSite()` finds a bare island
+   (no port, no fort, r≥120) within 300u of shore; Space → `buildOutpost(isl)`
+   (1200c) raises a player-owned fort via a persistent `builtForts` Map (islKey→def,
+   keyed by `islKeyOf`, rebuilt on load from `player.built`, checked FIRST in
+   `fortOf` so it survives chunk eviction). First outpost becomes your `hold`
+   (vault + banner); each further one flies your banner, auto-defends (existing
+   `owner:'player'` stepForts guns), and widens your fleet cap. Claiming a razed
+   ruin no longer requires `!player.hold` (multiple holds allowed). Saved via
+   `player.built` (array of `{k,px,py,max}`). This is the answer to "how do I take
+   territory / start a faction": claim a ruin OR build an outpost → enter it → Raise
+   your banner.
+5. **Trade-route payout** was ~20c/leg — now `legTime*(2.4+danger*2.4)*(1+cargo/40)`
+   (≈216/leg calm-short, up to ~1000 long/rough). A merchantman earns back her 1200c
+   in ~3 round trips. (`sendTrading`.)
+6. **Fleet cap scales with holdings.** `fleetCap()` = `clamp(2 + owned-forts +
+   (banner?1:0), 2, 6)`; `playerFortCount()` tallies `owner==='player'` forts. All
+   `>= 2` / `< 2` escort sites now use it (buy check, Crew display '/ N escorts').
+7. **NPC/ship pathfinding** — `steerClear` rewritten with **turn hysteresis**
+   (`o._turn` keeps a ship circling an island the same way instead of flip-flopping),
+   finer fan (0.35→2.5 rad), deeper look (150) + a 0.3× near-probe; `keepOffLand`
+   slide 0.6→0.85 + a small seaward shove + heading follow. Verified: 6 npcs pinned
+   at a coast all navigated 640–690u clear in 20s, 0 stuck on land.
+8. **Reef/sandbar/shoal damage** was a nibble (0.05/speed>55). Now genuinely
+   dangerous: continuous `(speed-30)*mult` (reef/shelf 0.19, sandbar 0.28) + a
+   one-time entry **crunch** (`!ship.wasShoal && speed>60` → up to 30/42 hp +
+   `SFX.collision`). ~18 hp/s at speed 134, ~27 at cruise, +30 impact — a full-sail
+   reef charge founders you; crawling (≤~40) is still safe. HUD warn threshold 55→45.
+9. **Chain-shot SFX (and 22 other WIRED sfx) restored.** The V1.0 slim
+   (`b74f013`) over-stripped — it deleted 23 categories that ARE in `SFX_FILES`
+   (chain-shot, sink-enemy/player, monster-death, roar-*, fort-cannon/-falls,
+   sail-up/-down, net-cast/-stow, lantern-on/-off, rain-light/-storm loops,
+   jelly-zap, hull-alarm, leviathan-rise, sting-death/-quest). All 38 files restored
+   from baseline `8c81359` (`git show 8c81359:assets/sfx/<f> > …`); 48→86 files,
+   4.1→7.6MB sfx. `SFX.chainShot()` now hits the real buffer (was silently falling
+   back to `SFX.fire`). **⚠ DEPLOY NOTE:** this re-fattens `assets/` — re-slim or
+   re-compress the sfx before the eventual GitHub-Pages upload (the slim existed to
+   fit GitHub's uploader; these are the wired sounds, so compress rather than delete).
+
 **🚢 V1.0 — LAUNCH-READY (2026-07-07).** Stamped `GAME_VERSION='1.0'` (title
 reads "Helmsong v1.0"). Ship-readiness pass done: console clean across title /
 gameplay / combat+audio / all port tabs / captain's screens / chart / settings /
