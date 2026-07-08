@@ -13,11 +13,31 @@ gameplay / combat+audio / all port tabs / captain's screens / chart / settings /
 pause; save+load verified (stamps v1.0); every referenced asset present (hud,
 title art, 6 onboarding clips, 9 music + 47 sfx); no absolute paths (only the
 Google-Fonts CDN, with offline fallbacks) so it deploys under any subpath; added
-a non-finite guard in `playSfx` (an edge-case AudioParam throw). Unreferenced
-extras on disk (ghost-ship sprites, future sfx) are intentional, not loaded.
-User deploys via GitHub (drag-drop `index.html` + `assets/` to the repo root,
-enable Pages). Portfolio pass (trailer/case-study) is the only thing left after
-launch — the onboarding capture rig in `/tmp/helmsong-cap` is the trailer rig.
+a non-finite guard in `playSfx` (an edge-case AudioParam throw).
+
+**⬆️ DEPLOY IN PROGRESS — GitHub upload not finished (pick up here).** Repo
+exists (public, EMPTY): `https://github.com/nikolai-paquin/Helmsong.git`. Web
+drag-drop kept failing (GitHub's uploader chokes on the 100-file/size limits).
+So the game was **slimmed for upload** (commit `b74f013`): 116→75 asset files,
+51→32MB — music compressed 192k→96k (originals in git history), removed 39
+prepared-but-unwired sfx (referenced in code yet never in `SFX_FILES`, so silent
+in V1 — REWIRE later for more audio) + retired ghost-ship sprites + `ship_sloop.png`
+(its dormant `SPRITES` ref dropped so no 404) + `.DS_Store`s. Local repo
+(`~/Desktop/Helmsong`) is a git repo, branch `main`, 53 commits, `origin` remote
+already set, ~80MB history, clean tree. **The push is blocked on auth:** git's
+osxkeychain has no token (GitHub Desktop keeps its own separate store), and I'm
+not allowed to push/publish without explicit go-ahead. User chose "push it for
+me" but it can't auth. **NEXT: confirm whether the user finished the upload**
+(is the repo populated? Pages live at `nikolai-paquin.github.io/Helmsong/`?). If
+not: GitHub Desktop is installed+authed → *Add Local Repository ~/Desktop/Helmsong
+→ Publish branch* (no token); OR user supplies a fine-grained PAT (Contents:RW on
+Helmsong) and you push `git push -u origin main`. Then **Settings→Pages→main/root**.
+Shippable payload = `index.html` + `assets/` (75 files, 32MB); `docs/` is dev-only,
+don't upload it. (SWARM precedent lives at `nikolai-paquin.github.io/Swarm`.)
+
+**Portfolio pass (trailer + case study) is the last item after it's live** — the
+onboarding capture rig in `/tmp/helmsong-cap` (capserver:8809 + `CAPSHEET` synchronous
+sprite-sheet grab from the world `buf`, MUTE audio first) is exactly the trailer rig.
 
 **NEW TITLE SCREEN (2026-07-07, v0.23.0 — in progress).** Replaced the plain
 dark-gradient intro with an animated **golden-hour parallax title** drawn on the
