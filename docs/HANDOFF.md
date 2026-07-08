@@ -7,6 +7,19 @@
 
 ## ⚓ STATE OF THE GAME (2026-07-04 — read this first)
 
+**🚀 SHIPPED TO GITHUB (2026-07-08).** The user pushed **v1.2** via the GitHub
+Desktop app → repo `nikolai-paquin/Helmsong` is now populated (`index.html` +
+`assets/`; `docs/` is dev-only). If a live playable link is wanted, the remaining
+step is **Settings → Pages → deploy from `main`/root** (serves at
+`nikolai-paquin.github.io/Helmsong/`; no absolute paths so subpath-safe). **NEXT
+TASK: the PORTFOLIO PASS — trailer + case study** (like SWARM/DELVE; the ACES
+case-study kit is the precedent). The reusable capture rig is ready this session:
+`helmsongcap` launch config (capserver.py on :8809 serving `/tmp/helmsong-cap`
+same-origin + `POST /save?name=&dir=`), the `if(window.__CAP)return;` HUD-free gate
+in `render()`, and the frame-capture→ffmpeg pipeline (see the '🎬 REAL FOOTAGE' entry
+for the exact recipe; ffmpeg at `~/ffmpeg-bin/ffmpeg`; existing `tut_*.mp4` clips are
+640×360 30fps). The game itself is feature-complete + QA-clean — no open bugs.
+
 **✅ V1.2 FULL QA PASS (2026-07-08 — every session feature exercised via `__HS`;
 all systems PASS, 1 hardening fix applied, console clean).** Verified: V1.1 fixes
 (WANTED fits 200/218px · escorts hit quarry+enemies+hostile-npcs but not neutrals ·
